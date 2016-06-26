@@ -1,0 +1,32 @@
+{
+    "author": "richard@richardfryer.com",
+    "dependencies": {
+        "pebble-generic-weather": "^1.0.5"
+    },
+    "keywords": [],
+    "name": "glanceweather",
+    "pebble": {
+        "capabilities": [
+            "location",
+            "configurable"
+        ],
+        "displayName": "GlanceWeather",
+        "enableMultiJS": true,
+        "messageKeys": [],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk"
+        ],
+        "uuid": "712f686b-d50e-4bf3-b138-9b4a17932707",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
