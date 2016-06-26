@@ -1,6 +1,6 @@
 #include <pebble.h>
 #include "glancing_api.h"
-#include <pebble-generic-weather/pebble-generic-weather.h>
+#include "get_weather.h"
 #include <pebble-events/pebble-events.h>
 
 static char active_str[] = "ACTIVE";
@@ -68,9 +68,9 @@ void glancing_callback(GlancingData *data) {
 
 char *weather_status = "Unknown";
 
-static void weather_callback(GenericWeatherInfo *info, GenericWeatherStatus status) {
+static void weather_callback(ForecastIOWeatherInfo *info, ForecastIOWeatherStatus status) {
   switch(status) {
-    case GenericWeatherStatusAvailable:
+    case ForecastIOWeatherStatusAvailable:
     {
       static char s_buffer[256];
       snprintf(s_buffer, sizeof(s_buffer),
@@ -79,23 +79,23 @@ static void weather_callback(GenericWeatherInfo *info, GenericWeatherStatus stat
       text_layer_set_text(s_text_layer, s_buffer);
     }
       break;
-    case GenericWeatherStatusNotYetFetched:
-      weather_status = "GenericWeatherStatusNotYetFetched";
+    case ForecastIOWeatherStatusNotYetFetched:
+      weather_status = "ForecastIOWeatherStatusNotYetFetched";
       break;
-    case GenericWeatherStatusBluetoothDisconnected:
-      weather_status = "GenericWeatherStatusBluetoothDisconnected";
+    case ForecastIOWeatherStatusBluetoothDisconnected:
+      weather_status = "ForecastIOWeatherStatusBluetoothDisconnected";
       break;
-    case GenericWeatherStatusPending:
-      weather_status = "GenericWeatherStatusPending";
+    case ForecastIOWeatherStatusPending:
+      weather_status = "ForecastIOWeatherStatusPending";
       break;
-    case GenericWeatherStatusFailed:
-      weather_status = "GenericWeatherStatusFailed";
+    case ForecastIOWeatherStatusFailed:
+      weather_status = "ForecastIOWeatherStatusFailed";
       break;
-    case GenericWeatherStatusBadKey:
-      weather_status = "GenericWeatherStatusBadKey";
+    case ForecastIOWeatherStatusBadKey:
+      weather_status = "ForecastIOWeatherStatusBadKey";
       break;
-    case GenericWeatherStatusLocationUnavailable:
-      weather_status = "GenericWeatherStatusLocationUnavailable";
+    case ForecastIOWeatherStatusLocationUnavailable:
+      weather_status = "ForecastIOWeatherStatusLocationUnavailable";
       break;
   }
 }
@@ -139,7 +139,7 @@ static void window_unload(Window *window) {
 }
 
 static void js_ready_handler(void *context) {
-  generic_weather_fetch(weather_callback);
+  forecast_io_weather_fetch(weather_callback);
 }
 
 static void init(void) {
@@ -151,9 +151,8 @@ static void init(void) {
   });
   window_stack_push(window, true);
   
-  generic_weather_init();
-  generic_weather_set_api_key("ddb8191c20d47e3cd47c91912e5c200c");
-  generic_weather_set_provider(GenericWeatherProviderForecastIo);
+  forecast_io_weather_init();
+  forecast_io_weather_set_api_key("ddb8191c20d47e3cd47c91912e5c200c");
   events_app_message_open();
   
   app_timer_register(3000, js_ready_handler, NULL);  
@@ -161,7 +160,7 @@ static void init(void) {
 
 static void deinit(void) {
   window_destroy(window);
-  generic_weather_deinit();
+  forecast_io_weather_deinit();
 }
 
 int main(void) {
