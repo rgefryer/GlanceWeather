@@ -25,7 +25,8 @@
             "FIOW_DAY",
             "FIOW_CONDITIONCODE",
             "FIOW_BADKEY",
-            "FIOW_LOCATIONUNAVAILABLE"
+            "FIOW_LOCATIONUNAVAILABLE",
+            "JSReady"
         ],
         "projectType": "native",
         "resources": {
@@ -39,7 +40,7 @@
         ],
         "uuid": "466de116-67e2-4ce1-844a-3393dd2975c2",
         "watchapp": {
-            "watchface": false
+            "watchface": true
         }
     },
     "version": "1.0.0"

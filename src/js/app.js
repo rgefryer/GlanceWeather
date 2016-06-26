@@ -63,11 +63,11 @@ var ForecastIoWeather = function() {
         }
 
         var message = {
-          'FIO_REPLY': 1,
-          'FIO_TEMPK': Math.round(json.currently.temperature + 273.15),
-          'FIO_DESCRIPTION': json.currently.summary,
-          'FIO_DAY': json.currently.icon.indexOf("-day") > 0 ? 1 : 0,
-          'FIO_CONDITIONCODE':condition
+          'FIOW_REPLY': 1,
+          'FIOW_TEMPK': Math.round(json.currently.temperature + 273.15),
+          'FIOW_DESCRIPTION': json.currently.summary,
+          'FIOW_DAY': json.currently.icon.indexOf("-day") > 0 ? 1 : 0,
+          'FIOW_CONDITIONCODE':condition
         };
 
         url = 'http://nominatim.openstreetmap.org/reverse?format=json&lat=' + coords.latitude + '&lon=' + coords.longitude;
@@ -75,7 +75,7 @@ var ForecastIoWeather = function() {
           if(req.status == 200) {
             var json = JSON.parse(req.response);
             var city = json.address.village || json.address.town || json.address.city || json.address.county || '';
-            message['FIO_NAME'] = city;
+            message['FIOW_NAME'] = city;
             Pebble.sendAppMessage(message);
           } else {
             // console.log('weather: Error fetching data (HTTP Status: ' + req.status + ')');
@@ -84,7 +84,7 @@ var ForecastIoWeather = function() {
 
       } else {
         console.log('weather: Error fetching data (HTTP Status: ' + req.status + ')');
-        Pebble.sendAppMessage({ 'FIO_BADKEY': 1 });
+        Pebble.sendAppMessage({ 'FIOW_BADKEY': 1 });
       }
     }.bind(this));
   };
@@ -101,12 +101,13 @@ var ForecastIoWeather = function() {
   this._onLocationError = function(err) {
     console.log('weather: Location error');
     Pebble.sendAppMessage({
-      'FIO_LOCATIONUNAVAILABLE': 1
+      'FIOW_LOCATIONUNAVAILABLE': 1
     });
   };
 
   this.appMessageHandler = function(dict, options) {
-    if(dict.payload['FIO_REQUEST']) {
+    console.log('weather: in appMessageHandler');
+    if(dict.payload['FIOW_REQUEST']) {
 
       console.log('weather: Got fetch request from C app');
 
@@ -115,16 +116,16 @@ var ForecastIoWeather = function() {
       if(options && 'apiKey' in options){
         this._apiKey = options['apiKey'];
       }
-      else if(dict.payload && 'FIO_APIKEY' in dict.payload){
-        this._apiKey = dict.payload['FIO_APIKEY'];
+      else if(dict.payload && 'FIOW_APIKEY' in dict.payload){
+        this._apiKey = dict.payload['FIOW_APIKEY'];
       }
 
       var location = undefined;
       if(options && 'location' in options){
         location = options['location'];
       }
-      else if(dict.payload && 'FIO_LATITUDE' in dict.payload && 'FIO_LONGITUDE' in dict.payload){
-        location = { 'latitude' : dict.payload['FIO_LATITUDE'] / 100000, 'longitude' : dict.payload['FIO_LONGITUDE'] / 100000};
+      else if(dict.payload && 'FIOW_LATITUDE' in dict.payload && 'FIOW_LONGITUDE' in dict.payload){
+        location = { 'latitude' : dict.payload['FIOW_LATITUDE'] / 100000, 'longitude' : dict.payload['FIOW_LONGITUDE'] / 100000};
       }
 
       if(location) {
@@ -140,12 +141,22 @@ var ForecastIoWeather = function() {
         });
       }
     }
+    else {
+      console.log('weather: unexpected payload');
+    }
   };
 };
 
 var weather = new ForecastIoWeather();
 
 Pebble.addEventListener('appmessage', function(e) {
-  console.log('weather: Set up appmessage handler');
+  console.log('weather: appmessage received');
   weather.appMessageHandler(e);
+});
+
+Pebble.addEventListener('ready', function() {
+  console.log('weather: PebbleKit JS ready.');
+
+  // Update s_js_ready on watch
+  Pebble.sendAppMessage({'JSReady': 1});
 });

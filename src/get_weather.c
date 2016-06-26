@@ -9,6 +9,7 @@ static ForecastIOWeatherStatus s_status;
 
 static char s_api_key[33];
 static ForecastIOWeatherCoordinates s_coordinates;
+static ForecastIOWeatherCallback *s_weather_callback;
 
 static EventHandle s_event_handle;
 
@@ -48,6 +49,11 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
     s_status = ForecastIOWeatherStatusLocationUnavailable;
     s_callback(s_info, s_status);
   }
+  
+  Tuple *ready_tuple = dict_find(iter, MESSAGE_KEY_JSReady);
+  if(ready_tuple) {
+    forecast_io_weather_fetch();
+  }  
 }
 
 static void fail_and_callback() {
@@ -84,11 +90,12 @@ static bool fetch() {
   return true;
 }
 
-void forecast_io_weather_init() {
+void forecast_io_weather_init(ForecastIOWeatherCallback *callback) {
   if(s_info) {
     free(s_info);
   }
 
+  s_callback = callback;
   s_info = (ForecastIOWeatherInfo*)malloc(sizeof(ForecastIOWeatherInfo));
   s_api_key[0] = 0;
   s_coordinates = FORECASTIO_WEATHER_GPS_LOCATION;
@@ -111,16 +118,14 @@ void forecast_io_weather_set_location(const ForecastIOWeatherCoordinates coordin
   s_coordinates = coordinates;
 }
 
-bool forecast_io_weather_fetch(ForecastIOWeatherCallback *callback) {
+bool forecast_io_weather_fetch() {
   if(!s_info) {
     return false;
   }
 
-  if(!callback) {
+  if(!s_callback) {
     return false;
   }
-
-  s_callback = callback;
 
   if(!bluetooth_connection_service_peek()) {
     s_status = ForecastIOWeatherStatusBluetoothDisconnected;

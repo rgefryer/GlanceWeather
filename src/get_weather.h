@@ -83,15 +83,12 @@ typedef void(ForecastIOWeatherCallback)(ForecastIOWeatherInfo *info, ForecastIOW
 
 //! Initialize the weather library. The data is fetched after calling this, and should be accessed
 //! and stored once the callback returns data, if it is successful.
-void forecast_io_weather_init();
+//! @param callback Callback to be called once the weather.
+void forecast_io_weather_init(ForecastIOWeatherCallback *callback);
 
 //! Initialize the weather API key
 //! @param api_key The API key for your weather provider.
 void forecast_io_weather_set_api_key(const char *api_key);
-
-//! Initialize the weather provider
-//! @param provider The selected weather provider (default is OWM)
-void forecast_io_weather_set_provider(ForecastIOWeatherProvider provider);
 
 //! Initialize the weather location if you don't want to use the GPS
 //! @param coordinates The coordinates (default is FORECASTIO_WEATHER_GPS_LOCATION)
@@ -99,9 +96,8 @@ void forecast_io_weather_set_location(const ForecastIOWeatherCoordinates coordin
 
 //! Important: This uses the AppMessage system. You should only use AppMessage yourself
 //! either before calling this, or after you have obtained your weather data.
-//! @param callback Callback to be called once the weather.
 //! @return true if the fetch message to PebbleKit JS was successful, false otherwise.
-bool forecast_io_weather_fetch(ForecastIOWeatherCallback *callback);
+bool forecast_io_weather_fetch();
 
 //! Deinitialize and free the backing ForecastIOWeatherInfo.
 void forecast_io_weather_deinit();

@@ -67,7 +67,7 @@ void glancing_callback(GlanceResult *data) {
       break;
   }
   layer_mark_dirty(text_layer_get_layer(glance_text_layer));
-  state = data->state;
+  state = data->result;
 }
 
 char *weather_status = "NotYetFetched";
@@ -148,15 +148,11 @@ static void window_load(Window *window) {
   tick_timer_service_subscribe((MINUTE_UNIT), tick_handler);
 
   // Enable Glancing with normal 5 second timeout, takeover backlight
-  glancing_service_subscribe(5 * 1000, true, false, glancing_callback);
+  glancing_service_subscribe(true, false, glancing_callback);
 }
 
 static void window_unload(Window *window) {
   text_layer_destroy(time_text_layer);
-}
-
-static void js_ready_handler(void *context) {
-  forecast_io_weather_fetch(weather_callback);
 }
 
 static void init(void) {
@@ -168,11 +164,9 @@ static void init(void) {
   });
   window_stack_push(window, true);
   
-  forecast_io_weather_init();
+  forecast_io_weather_init(weather_callback);
   forecast_io_weather_set_api_key("ddb8191c20d47e3cd47c91912e5c200c");
   events_app_message_open();
-  
-  app_timer_register(3000, js_ready_handler, NULL);  
 }
 
 static void deinit(void) {

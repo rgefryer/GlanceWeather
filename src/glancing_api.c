@@ -8,6 +8,7 @@ typedef enum {
   GLANCE_STATE_NOT_ACTIVE = 0,   // User is probably not looking at the watch
   GLANCE_STATE_ACTIVE = 1,       // User might well be looking at the watch
   GLANCE_STATE_ACTIVE_ROLL = 2,  // User might be part way through a wrist roll
+  GLANCE_STATE_IDLE_ACTIVE = 3,  // Activity expired, but not yet idle
 } GlanceFSMState;
 
 typedef enum {
@@ -75,12 +76,14 @@ glancing_zone roll_zone = {
   .z_segment = { -500, 500}
 };
 
+static void prv_accel_handler(AccelData *data, uint32_t num_samples);
+
 // Default to an empty callback when state changes
-static void noop_glance_result_callback(GlancingData *data) {}
-static GlancingDataHandler configured_glance_result_callback = noop_glance_result_callback;
+static void noop_glance_result_callback(GlanceResult *data) {}
+static GlanceResultHandler configured_glance_result_callback = noop_glance_result_callback;
 
 // Default initial state to inactive
-static GlancingData glance_data = {.result = GLANCE_OUTPUT_IDLE};
+static GlanceResult glance_data = {.result = GLANCE_OUTPUT_IDLE};
 
 static bool light_on_when_active = false;
 static bool allow_flick_backlight_when_inactive = false;
@@ -94,70 +97,14 @@ typedef struct time_ms_t {
   uint64_t milliseconds;
 } time_ms_t;
 
-static inline void send_glance_output(GlanceResult result) {
-  configured_glance_result_callback(&result);
+static inline void send_glance_output(GlanceOutput output) {
+  glance_data.result = output;
+  configured_glance_result_callback(&glance_data);
 }
 
 static inline bool is_glancing(uint64_t reading_time_ms) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "is_glancing");
   return TIMER_ACTIVE(short_timer, reading_time_ms);
-}
-
-// Light interactive timer to save power by not turning on light in ambient sunlight
-static void keep_light_on_while_active(void *data) {
-  time_ms_t current_time;
-  store_current_time(&current_time);
-
-  if (is_glancing(current_time.milliseconds)) { 
-    app_timer_register(LIGHT_FADE_TIME_MS, keep_light_on_while_active, data);
-    light_enable_interaction();
-  } else {
-    // no control over triggering fade-out from API
-    // so just turn light off for now
-    light_enable(false);
-  }
-}
-
-bool prefer_fast_sampling = false;
-bool slow_sampling_active = false;
-bool fast_sampling_active = false;
-uint32_t sample_duration_ms = 0;
-
-// Setup motion accel handler with low sample rate
-// 10hz with buffer for 10 samples for 1 second update rate
-static void start_slow_accelerometer_sampling()
-{
-  if (slow_sampling_active) {
-    return;
-  }
-
-  if (fast_sampling_active) {
-    accel_data_service_unsubscribe();
-    fast_sampling_active = false;
-  }
-
-  accel_data_service_subscribe(10, prv_accel_handler);
-  accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
-  slow_sampling_active = true;  
-  sample_duration_ms = 1000 / 10;
-}
-
-// Setup motion accel handler with high sample rate
-// 25hz with buffer for 5 samples for 0.2 second update rate
-static void start_fast_accelerometer_sampling()
-{
-  if (fast_sampling_active) {
-    return;
-  }
-
-  if (slow_sampling_active) {
-    accel_data_service_unsubscribe();
-    slow_sampling_active = false;
-  }
-  
-  accel_data_service_subscribe(5, prv_accel_handler);
-  accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
-  fast_sampling_active = true;
-  sample_duration_ms = 1000 / 25;
 }
 
 static void store_current_time(time_ms_t *time_data)
@@ -167,9 +114,95 @@ static void store_current_time(time_ms_t *time_data)
   time_data->milliseconds += 1000 * time_data->sec; 
 }
 
-static GlanceFsmState glance_fsm(GlanceFsmState state, GlanceFSMInput input, uint64_t time_of_input_ms) {
+// Light interactive timer to save power by not turning on light in ambient sunlight
+bool holding_light_on = false;
+static void keep_light_on_while_active_internal(void *data) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "keep_light_on_while_active");
+  
+  if (!light_on_when_active) {
+    return;
+  }
+  
+  time_ms_t current_time;
+  store_current_time(&current_time);
 
-  GlanceFsmState = new_state = state;
+  if (is_glancing(current_time.milliseconds)) { 
+    app_timer_register(LIGHT_FADE_TIME_MS, keep_light_on_while_active_internal, data);
+    light_enable_interaction();
+    holding_light_on = true;
+  } else {
+    // no control over triggering fade-out from API
+    // so just turn light off for now
+    light_enable(false);
+    holding_light_on = false;
+  }
+}
+
+static void keep_light_on_while_active() {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "keep_light_on_while_active");
+  
+  if (holding_light_on || !light_on_when_active) {
+    return;
+  }
+  
+  keep_light_on_while_active_internal(NULL);
+}
+
+bool prefer_fast_sampling = false;
+bool slow_sampling_active = false;
+bool fast_sampling_active = false;
+uint32_t sample_duration_ms = 0;
+
+// Setup motion accel handler with low sample rate
+// 25hz with buffer for 25 samples for 1 second update rate
+static void start_slow_accelerometer_sampling(void *data) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "start_slow_accelerometer_sampling");
+ 
+  if (slow_sampling_active) {
+    return;
+  }
+  
+  if (fast_sampling_active) {
+    accel_service_set_samples_per_update(25);
+    fast_sampling_active = false;  
+  }
+  else {
+    accel_data_service_subscribe(25, prv_accel_handler);
+  }
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
+  slow_sampling_active = true;  
+  sample_duration_ms = 1000 / 25;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Exit start_slow_accelerometer_sampling");
+}
+
+// Setup motion accel handler with high sample rate
+// 25hz with buffer for 5 samples for 0.2 second update rate
+static void start_fast_accelerometer_sampling(void *data) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "start_fast_accelerometer_sampling");
+  if (fast_sampling_active) {
+    return;
+  }
+
+  if (slow_sampling_active) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "accel_service_set_samples_per_update");
+    accel_service_set_samples_per_update(5);
+    slow_sampling_active = false;
+  }
+  else {
+    accel_data_service_subscribe(5, prv_accel_handler);
+  }
+  
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "accel_service_set_sampling_rate");
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
+  fast_sampling_active = true;
+  sample_duration_ms = 1000 / 25;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Exit start_fast_accelerometer_sampling");
+}
+
+static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uint64_t time_of_input_ms) {
+  //APP_LOG(APP_LOG_LEVEL_DEBUG, "glance_fsm(%d, %d)", state, input);
+
+  GlanceFSMState new_state = state;
 
   switch (state) {
     case GLANCE_STATE_NOT_ACTIVE:
@@ -179,17 +212,26 @@ static GlanceFsmState glance_fsm(GlanceFsmState state, GlanceFSMInput input, uin
         SET_TIMER(long_timer, LONG_TIMER_DURATION_MS, time_of_input_ms);
         prefer_fast_sampling = true;
         send_glance_output(GLANCE_OUTPUT_ACTIVE);
+        keep_light_on_while_active();
       }
       break;
 
     case GLANCE_STATE_ACTIVE:
       switch (input) {
         case GLANCE_INPUT_INACTIVE_ZONE:
-        case GLANCE_INPUT_LONG_TIMER_EXPIRED:
           new_state = GLANCE_STATE_NOT_ACTIVE;
           send_glance_output(GLANCE_OUTPUT_IDLE);
           RESET_TIMER(roll_timer);
           RESET_TIMER(short_timer);
+          RESET_TIMER(long_timer);
+          prefer_fast_sampling = false;
+          break;
+
+        case GLANCE_INPUT_LONG_TIMER_EXPIRED:
+          new_state = GLANCE_STATE_IDLE_ACTIVE;
+          send_glance_output(GLANCE_OUTPUT_IDLE);
+          RESET_TIMER(roll_timer);
+          SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
           RESET_TIMER(long_timer);
           prefer_fast_sampling = false;
           break;
@@ -201,6 +243,32 @@ static GlanceFsmState glance_fsm(GlanceFsmState state, GlanceFSMInput input, uin
 
         case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
           prefer_fast_sampling = false;
+          break;
+        
+        default:
+          break;
+      }
+      break;
+
+    case GLANCE_STATE_IDLE_ACTIVE:
+      switch (input) {
+        case GLANCE_INPUT_INACTIVE_ZONE:
+        case GLANCE_INPUT_ROLL_ZONE:
+        case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
+          new_state = GLANCE_STATE_NOT_ACTIVE;
+          send_glance_output(GLANCE_OUTPUT_IDLE);
+          RESET_TIMER(roll_timer);
+          RESET_TIMER(short_timer);
+          RESET_TIMER(long_timer);
+          prefer_fast_sampling = false;
+          break;
+
+        case GLANCE_INPUT_ACTIVE_ZONE:
+          prefer_fast_sampling = false;
+          SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
+          break;
+        
+        default:
           break;
       }
       break;
@@ -223,6 +291,7 @@ static GlanceFsmState glance_fsm(GlanceFsmState state, GlanceFSMInput input, uin
           send_glance_output(GLANCE_OUTPUT_ROLL);
           SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
           SET_TIMER(long_timer, LONG_TIMER_DURATION_MS, time_of_input_ms);
+          keep_light_on_while_active();
           prefer_fast_sampling = true;
           break;
 
@@ -234,11 +303,17 @@ static GlanceFsmState glance_fsm(GlanceFsmState state, GlanceFSMInput input, uin
           new_state = GLANCE_STATE_ACTIVE;
           prefer_fast_sampling = false;
           break;
+        
+        default:
+          break;
       }
+    
+    default:
       break;
   }
 
-  return state;
+  //APP_LOG(APP_LOG_LEVEL_DEBUG, "glance_fsm returns %d", new_state);
+  return new_state;
 }
 
 
@@ -268,10 +343,7 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
   }
 }
 
-
 static void prv_accel_handler(AccelData *data, uint32_t num_samples) {
-  static bool unglanced = true;
-  uint32_t active_count = 0;
   time_ms_t current_time;
   store_current_time(&current_time);
 
@@ -283,11 +355,11 @@ static void prv_accel_handler(AccelData *data, uint32_t num_samples) {
   }
 
   // Update the sampling speed
-  if (prefer_fast_sampling) {
-    start_fast_accelerometer_sampling();
+  if (prefer_fast_sampling && slow_sampling_active) {
+    app_timer_register(10, start_fast_accelerometer_sampling, NULL);
   }
-  else {
-    start_slow_accelerometer_sampling();
+  else if (!prefer_fast_sampling && fast_sampling_active) {
+    app_timer_register(10, start_slow_accelerometer_sampling, NULL);
   }
 }
 
@@ -306,10 +378,10 @@ static void tap_event_handler(AccelAxisType axis, int32_t direction) {
 }
 
 void glancing_service_subscribe(bool control_backlight, 
-                                bool legacy_flick_backlight, GlancingDataHandler handler) {
+                                bool legacy_flick_backlight, GlanceResultHandler handler) {
   configured_glance_result_callback = handler;
 
-  start_slow_accelerometer_sampling()
+  start_slow_accelerometer_sampling(NULL);
  
   allow_flick_backlight_when_inactive = legacy_flick_backlight;
   light_on_when_active = control_backlight;
@@ -321,7 +393,7 @@ void glancing_service_subscribe(bool control_backlight,
 }
 
 void glancing_service_unsubscribe() {
-  if (sampling_active) {
+  if (fast_sampling_active || slow_sampling_active) {
     accel_data_service_unsubscribe();
   }
   if (light_on_when_active) {
