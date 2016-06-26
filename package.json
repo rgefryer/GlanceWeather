@@ -1,8 +1,6 @@
 {
     "author": "richard@richardfryer.com",
-    "dependencies": {
-        "pebble-generic-weather": "^1.0.5"
-    },
+    "dependencies": {},
     "keywords": [],
     "name": "glanceweather",
     "pebble": {

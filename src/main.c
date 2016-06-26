@@ -1,5 +1,7 @@
 #include <pebble.h>
 #include "glancing_api.h"
+#include <pebble-generic-weather/pebble-generic-weather.h>
+#include <pebble-events/pebble-events.h>
 
 static char active_str[] = "ACTIVE";
 static char inactive_str[] = "INACTIVE";
@@ -64,6 +66,40 @@ void glancing_callback(GlancingData *data) {
   state = data->state;
 }
 
+char *weather_status = "Unknown";
+
+static void weather_callback(GenericWeatherInfo *info, GenericWeatherStatus status) {
+  switch(status) {
+    case GenericWeatherStatusAvailable:
+    {
+      static char s_buffer[256];
+      snprintf(s_buffer, sizeof(s_buffer),
+        "Temperature (K/C/F): %d/%d/%d\n\nName:\n%s\n\nDescription:\n%s",
+        info->temp_k, info->temp_c, info->temp_f, info->name, info->description);
+      text_layer_set_text(s_text_layer, s_buffer);
+    }
+      break;
+    case GenericWeatherStatusNotYetFetched:
+      weather_status = "GenericWeatherStatusNotYetFetched";
+      break;
+    case GenericWeatherStatusBluetoothDisconnected:
+      weather_status = "GenericWeatherStatusBluetoothDisconnected";
+      break;
+    case GenericWeatherStatusPending:
+      weather_status = "GenericWeatherStatusPending";
+      break;
+    case GenericWeatherStatusFailed:
+      weather_status = "GenericWeatherStatusFailed";
+      break;
+    case GenericWeatherStatusBadKey:
+      weather_status = "GenericWeatherStatusBadKey";
+      break;
+    case GenericWeatherStatusLocationUnavailable:
+      weather_status = "GenericWeatherStatusLocationUnavailable";
+      break;
+  }
+}
+
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -102,6 +138,10 @@ static void window_unload(Window *window) {
   text_layer_destroy(time_text_layer);
 }
 
+static void js_ready_handler(void *context) {
+  generic_weather_fetch(weather_callback);
+}
+
 static void init(void) {
   window = window_create();
   window_set_background_color(window, GColorRed);
@@ -110,10 +150,18 @@ static void init(void) {
     .unload = window_unload,
   });
   window_stack_push(window, true);
+  
+  generic_weather_init();
+  generic_weather_set_api_key("ddb8191c20d47e3cd47c91912e5c200c");
+  generic_weather_set_provider(GenericWeatherProviderForecastIo);
+  events_app_message_open();
+  
+  app_timer_register(3000, js_ready_handler, NULL);  
 }
 
 static void deinit(void) {
   window_destroy(window);
+  generic_weather_deinit();
 }
 
 int main(void) {
