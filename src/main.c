@@ -4,8 +4,8 @@
 #include <pebble-events/pebble-events.h>
 
 static char active_str[] = "ACTIVE";
-static char inactive_str[] = "INACTIVE";
-static char timedout_str[] = "TIMED_OUT";
+static char inactive_str[] = "IDLE";
+static char rolled_str[] = "  ROLLED";
 
 static Window *window;
 
@@ -16,9 +16,10 @@ static TextLayer *weather_text_layer;
 
 static bool seconds_mode = false;
 static TextLayer *glance_text_layer;
-char glance_string[16] = "INACTIVE";
+char glance_string[16] = "IDLE";
+uint16_t roll_count = 0;
 
-static GlanceState state = GLANCING_INACTIVE;
+static GlanceOutput state = GLANCE_OUTPUT_IDLE;
 
 void tick_handler(struct tm *tick_time, TimeUnits units_changed){
   if (seconds_mode) {
@@ -32,11 +33,11 @@ void tick_handler(struct tm *tick_time, TimeUnits units_changed){
   layer_mark_dirty(text_layer_get_layer(time_text_layer));
 }
 
-void glancing_callback(GlancingData *data) {
+void glancing_callback(GlanceResult *data) {
   time_t current_time;
  
-  switch (data->state) {
-    case GLANCING_ACTIVE:
+  switch (data->result) {
+    case GLANCE_OUTPUT_ACTIVE:
       seconds_mode = true;
       tick_timer_service_subscribe((SECOND_UNIT), tick_handler);
       //Kick the tick_handler for instant update
@@ -45,22 +46,23 @@ void glancing_callback(GlancingData *data) {
       strncpy(glance_string, active_str, sizeof(glance_string) - 1);
       //window_set_background_color(window, GColorGreen); // Green for active
       break;
-    case GLANCING_TIMEDOUT:
-      seconds_mode = false;
-      strncpy(glance_string, timedout_str, sizeof(glance_string) - 1);
+
+    case GLANCE_OUTPUT_ROLL:
+      roll_count += 1;
+      strncpy(glance_string, rolled_str, sizeof(glance_string) - 1);
+      glance_string[0] = '0' + roll_count;
       //window_set_background_color(window, GColorBlue);  // Blue for timedout
       break;
-    case GLANCING_INACTIVE:
+
+    case GLANCE_OUTPUT_IDLE:
     default:
+      roll_count = 0;
       seconds_mode = false;
       //Kick the tick_handler for instant update
       current_time = time(NULL);
       tick_handler(localtime(&current_time),MINUTE_UNIT);
       tick_timer_service_subscribe((MINUTE_UNIT), tick_handler);
-      // Leave the TIMEDOUT message
-      if (state != GLANCING_TIMEDOUT) {
-        strncpy(glance_string, inactive_str, sizeof(glance_string) - 1);
-      }
+      strncpy(glance_string, inactive_str, sizeof(glance_string) - 1);
       //window_set_background_color(window, GColorRed);  // Red for inactive
       break;
   }

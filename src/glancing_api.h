@@ -3,19 +3,20 @@
 #include <pebble.h>
 
 typedef enum {
-  GLANCING_INACTIVE = 0,   // Definitely not looking
-  GLANCING_ACTIVE = 1,     // Watch Face in view
-  GLANCING_TIMEDOUT = 2,   // Active, but timeout expired
-  GLANCING_ROCK = 3,       // Active, user rocked their wrist
-} GlanceState;
+  GLANCE_OUTPUT_IDLE = 0,
+  GLANCE_OUTPUT_ACTIVE = 1,
+  GLANCE_OUTPUT_ROLL = 2,
+} GlanceOutput;
 
-typedef struct GlancingData {
-  GlanceState state;
-} GlancingData;
+typedef struct GlanceResult {
+  GlanceOutput result;
+} GlanceResult;
 
-typedef void (*GlancingDataHandler)(GlancingData *data);
+typedef void (*GlancingDataHandler)(GlanceResult *data);
 
-void glancing_service_subscribe(int timeout_ms, bool control_backlight, 
+// control_backlight - switch on light while the glance is active
+// legacy_flick_backlight - allow "flick backlight" when the glance is inactive
+void glancing_service_subscribe(bool control_backlight, 
                                 bool legacy_flick_backlight, GlancingDataHandler handler);
 
 void glancing_service_unsubscribe();

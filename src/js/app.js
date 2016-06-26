@@ -132,7 +132,6 @@ var ForecastIoWeather = function() {
         this._getWeather(location);
       }
       else {
-        console.log('weather: use GPS location');
         navigator.geolocation.getCurrentPosition(
           this._onLocationSuccess.bind(this),
           this._onLocationError.bind(this), {
@@ -147,5 +146,6 @@ var ForecastIoWeather = function() {
 var weather = new ForecastIoWeather();
 
 Pebble.addEventListener('appmessage', function(e) {
+  console.log('weather: Set up appmessage handler');
   weather.appMessageHandler(e);
 });
