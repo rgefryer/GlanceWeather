@@ -25,8 +25,8 @@ var ForecastIoWeather = function() {
   };
 
   this._getWeatherF_IO = function(coords) {
-    var url = 'https://api.forecast.io/forecast/' + this._apiKey + '/'
-      + coords.latitude + ',' + coords.longitude + '?exclude=minutely,hourly,daily,alerts,flag&units=si';
+    var url = 'https://api.forecast.io/forecast/' + this._apiKey + '/' +
+      coords.latitude + ',' + coords.longitude + '?exclude=minutely,hourly,daily,alerts,flag&units=si';
 
     console.log('weather: Contacting forecast.io...');
     // console.log(url);

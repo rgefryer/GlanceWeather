@@ -1,6 +1,8 @@
 {
     "author": "richard@richardfryer.com",
-    "dependencies": {},
+    "dependencies": {
+        "pebble-events": "^1.0.2"
+    },
     "keywords": [],
     "name": "glanceweather",
     "pebble": {
@@ -10,7 +12,21 @@
         ],
         "displayName": "GlanceWeather",
         "enableMultiJS": true,
-        "messageKeys": [],
+        "messageKeys": [
+            "FIOW_REQUEST",
+            "FIOW_APIKEY",
+            "FIOW_PROVIDER",
+            "FIOW_LATITUDE",
+            "FIOW_LONGITUDE",
+            "FIOW_REPLY",
+            "FIOW_DESCRIPTION",
+            "FIOW_NAME",
+            "FIOW_TEMPK",
+            "FIOW_DAY",
+            "FIOW_CONDITIONCODE",
+            "FIOW_BADKEY",
+            "FIOW_LOCATIONUNAVAILABLE"
+        ],
         "projectType": "native",
         "resources": {
             "media": []
@@ -21,7 +37,7 @@
             "basalt",
             "chalk"
         ],
-        "uuid": "712f686b-d50e-4bf3-b138-9b4a17932707",
+        "uuid": "466de116-67e2-4ce1-844a-3393dd2975c2",
         "watchapp": {
             "watchface": false
         }

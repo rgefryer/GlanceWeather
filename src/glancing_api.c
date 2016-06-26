@@ -46,7 +46,6 @@ glancing_zone inactive_zone_away = {
   .z_segment = { -500, 500}
 };
 
-
 static void prv_glancing_callback(GlancingData *data) {}
 static GlancingDataHandler prv_handler = prv_glancing_callback;
 static GlancingData prv_data = {.state = GLANCING_INACTIVE};

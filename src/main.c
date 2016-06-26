@@ -12,6 +12,8 @@ static Window *window;
 static TextLayer *time_text_layer;
 char time_string[] = "00:00:00";
 
+static TextLayer *weather_text_layer;
+
 static bool seconds_mode = false;
 static TextLayer *glance_text_layer;
 char glance_string[16] = "INACTIVE";
@@ -41,12 +43,12 @@ void glancing_callback(GlancingData *data) {
       current_time = time(NULL);
       tick_handler(localtime(&current_time),SECOND_UNIT);
       strncpy(glance_string, active_str, sizeof(glance_string) - 1);
-      window_set_background_color(window, GColorGreen); // Green for active
+      //window_set_background_color(window, GColorGreen); // Green for active
       break;
     case GLANCING_TIMEDOUT:
       seconds_mode = false;
       strncpy(glance_string, timedout_str, sizeof(glance_string) - 1);
-      window_set_background_color(window, GColorBlue);  // Blue for timedout
+      //window_set_background_color(window, GColorBlue);  // Blue for timedout
       break;
     case GLANCING_INACTIVE:
     default:
@@ -59,52 +61,66 @@ void glancing_callback(GlancingData *data) {
       if (state != GLANCING_TIMEDOUT) {
         strncpy(glance_string, inactive_str, sizeof(glance_string) - 1);
       }
-      window_set_background_color(window, GColorRed);  // Red for inactive
+      //window_set_background_color(window, GColorRed);  // Red for inactive
       break;
   }
   layer_mark_dirty(text_layer_get_layer(glance_text_layer));
   state = data->state;
 }
 
-char *weather_status = "Unknown";
+char *weather_status = "NotYetFetched";
 
 static void weather_callback(ForecastIOWeatherInfo *info, ForecastIOWeatherStatus status) {
   switch(status) {
     case ForecastIOWeatherStatusAvailable:
     {
+      /*
       static char s_buffer[256];
       snprintf(s_buffer, sizeof(s_buffer),
         "Temperature (K/C/F): %d/%d/%d\n\nName:\n%s\n\nDescription:\n%s",
         info->temp_k, info->temp_c, info->temp_f, info->name, info->description);
       text_layer_set_text(s_text_layer, s_buffer);
+      */
+      weather_status = "Available";
     }
       break;
     case ForecastIOWeatherStatusNotYetFetched:
-      weather_status = "ForecastIOWeatherStatusNotYetFetched";
+      weather_status = "NotYetFetched";
       break;
     case ForecastIOWeatherStatusBluetoothDisconnected:
-      weather_status = "ForecastIOWeatherStatusBluetoothDisconnected";
+      weather_status = "BluetoothDisconnected";
       break;
     case ForecastIOWeatherStatusPending:
-      weather_status = "ForecastIOWeatherStatusPending";
+      weather_status = "Pending";
       break;
     case ForecastIOWeatherStatusFailed:
-      weather_status = "ForecastIOWeatherStatusFailed";
+      weather_status = "Failed";
       break;
     case ForecastIOWeatherStatusBadKey:
-      weather_status = "ForecastIOWeatherStatusBadKey";
+      weather_status = "BadKey";
       break;
     case ForecastIOWeatherStatusLocationUnavailable:
-      weather_status = "ForecastIOWeatherStatusLocationUnavailable";
+      weather_status = "LocationUnavailable";
       break;
   }
+  text_layer_set_text(weather_text_layer, weather_status); 
 }
+
+
 
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
   const GPoint center = grect_center_point(&bounds);
 
+  weather_text_layer = text_layer_create(GRect (0, center.y - 30, bounds.size.w, 32)); 
+  text_layer_set_text(weather_text_layer, weather_status);
+  text_layer_set_font(weather_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_text_color(weather_text_layer, GColorWhite);
+  text_layer_set_background_color(weather_text_layer, GColorClear);
+  text_layer_set_text_alignment(weather_text_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(weather_text_layer));
+  
   time_text_layer = text_layer_create(GRect (0, center.y, bounds.size.w, 32)); 
   text_layer_set_text(time_text_layer, time_string);
   text_layer_set_font(time_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
@@ -112,7 +128,6 @@ static void window_load(Window *window) {
   text_layer_set_background_color(time_text_layer, GColorClear);
   text_layer_set_text_alignment(time_text_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(time_text_layer));
-
 
   glance_text_layer = text_layer_create(GRect (0, center.y + 30, bounds.size.w, 32)); 
   text_layer_set_text(glance_text_layer, glance_string);
