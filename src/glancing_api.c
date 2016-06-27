@@ -36,9 +36,9 @@ uint64_t activation_timer = 0;  // Expiry time in milliseconds
 #define RESET_TIMER(TIMER) TIMER = 0
 
 #define NEW_ACTIVE_TIMER_DURATION_MS   5000
-#define OLD_ACTIVE_TIMER_DURATION_MS  30000
-#define ROLL_TIMER_DURATION_MS          500
-#define ACTIVATION_TIMER_DURATION_MS    400
+#define OLD_ACTIVE_TIMER_DURATION_MS  15000
+#define ROLL_TIMER_DURATION_MS         1000
+#define ACTIVATION_TIMER_DURATION_MS    500
 
 #ifndef WITHIN
 #define WITHIN(n, min, max) ((n) >= (min) && (n) <= (max))
@@ -398,7 +398,7 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
 
   // Start by testing if the zone is unchanged (for efficiency)
   bool zone_not_changed = false;
-  switch current_zone {
+  switch (current_zone) {
     case GLANCE_ZONE_ACTIVE:
       if (WITHIN_ACCELEROMETER_ZONE(active_zone, *reading)) {
         zone_not_changed = true;
@@ -425,26 +425,24 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
   // Avoid repeating the test done above.
   if (!zone_not_changed) {
     if ((current_zone != GLANCE_ZONE_ACTIVE) && WITHIN_ACCELEROMETER_ZONE(active_zone, *reading)) {
-      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ACTIVE_ZONE, reading_time_ms);
       current_zone = GLANCE_ZONE_ACTIVE;
-      }
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ACTIVE_ZONE, reading_time_ms);
+      send_glance_zone(current_zone);      
     }
     else if ((current_zone != GLANCE_ZONE_INACTIVE) && WITHIN_ACCELEROMETER_ZONE(dropped_zone, *reading)) { 
-      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_DROPPED_ZONE, reading_time_ms);
       current_zone = GLANCE_ZONE_INACTIVE;
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_DROPPED_ZONE, reading_time_ms);
       send_glance_zone(current_zone);
     }
     else if ((current_zone != GLANCE_ZONE_ROLL) && WITHIN_ACCELEROMETER_ZONE(roll_zone, *reading)) { 
-      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_ZONE, reading_time_ms);
       current_zone = GLANCE_ZONE_ROLL;
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_ZONE, reading_time_ms);
       send_glance_zone(current_zone);
     }
     else if (current_zone != GLANCE_ZONE_NONE) {
-      if (current_zone != GLANCE_ZONE_NONE) {
-        fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_UNKNOWN_ZONE, reading_time_ms);
-        current_zone = GLANCE_ZONE_NONE;
-        send_glance_zone(current_zone);
-      }
+      current_zone = GLANCE_ZONE_NONE;
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_UNKNOWN_ZONE, reading_time_ms);
+      send_glance_zone(current_zone);
     }
   }
 

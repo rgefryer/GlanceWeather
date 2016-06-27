@@ -6,8 +6,6 @@
 /*
 Next up...
 
-- Glance enhancements
-  - Condider only lighting on roll, or quick transition to active from inactive
 - Make weather retrieval get the forecast informantion I want
 - Supply the forecast information to the watch
 - Cache the forecast information on the watch
