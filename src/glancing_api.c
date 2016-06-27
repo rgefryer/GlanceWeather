@@ -72,7 +72,7 @@ glancing_zone inactive_zone = {
 // arm horizontal, screen facing away from user, essentially wrist was rotated away from user
 glancing_zone roll_zone = {
   .x_segment = { -600, 600},
-  .y_segment = { 850, 1200},
+  .y_segment = { 600, 1200},  // Lower Y was originally 850 - now easier to hit at low sample rate
   .z_segment = { -500, 500}
 };
 
@@ -327,32 +327,56 @@ static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uin
 GlanceZone current_zone = GLANCE_ZONE_NONE;
 static void process_accelerometer_reading(AccelData *reading, uint64_t reading_time_ms) {
 
-  if (WITHIN_ACCELEROMETER_ZONE(active_zone, *reading)) {
-    fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ACTIVE_ZONE, reading_time_ms);
-    if (current_zone != GLANCE_ZONE_ACTIVE) {
-      current_zone = GLANCE_ZONE_ACTIVE;
-      send_glance_zone(current_zone);
-    }
+  // Start by testing if the zone is unchanged (for efficiency)
+  bool zone_not_changed = false;
+  switch current_zone {
+    case GLANCE_ZONE_ACTIVE:
+      if (WITHIN_ACCELEROMETER_ZONE(active_zone, *reading)) {
+        zone_not_changed = true;
+      }
+      break;
+
+    case GLANCE_ZONE_INACTIVE:
+      if (WITHIN_ACCELEROMETER_ZONE(inactive_zone, *reading)) {
+        zone_not_changed = true;
+      }
+      break;
+
+    case GLANCE_ZONE_ROLL:
+      if (WITHIN_ACCELEROMETER_ZONE(roll_zone, *reading)) {
+        zone_not_changed = true;
+      }
+      break;
+
+    case GLANCE_ZONE_NONE:
+      break;
   }
-  else if (WITHIN_ACCELEROMETER_ZONE(inactive_zone, *reading)) { 
-    fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_INACTIVE_ZONE, reading_time_ms);
-    if (current_zone != GLANCE_ZONE_INACTIVE) {
+
+  // If we haven't spotted that the zone is unchanged, try the other possibilities.
+  // Avoid repeating the test done above.
+  if (!zone_not_changed) {
+    if ((current_zone != GLANCE_ZONE_ACTIVE) && WITHIN_ACCELEROMETER_ZONE(active_zone, *reading)) {
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ACTIVE_ZONE, reading_time_ms);
+      current_zone = GLANCE_ZONE_ACTIVE;
+      }
+    }
+    else if ((current_zone != GLANCE_ZONE_INACTIVE) && WITHIN_ACCELEROMETER_ZONE(inactive_zone, *reading)) { 
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_INACTIVE_ZONE, reading_time_ms);
       current_zone = GLANCE_ZONE_INACTIVE;
       send_glance_zone(current_zone);
     }
-  }
-  else if (WITHIN_ACCELEROMETER_ZONE(roll_zone, *reading)) { 
-    fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_ZONE, reading_time_ms);
-    if (current_zone != GLANCE_ZONE_ROLL) {
+    else if ((current_zone != GLANCE_ZONE_ROLL) && WITHIN_ACCELEROMETER_ZONE(roll_zone, *reading)) { 
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_ZONE, reading_time_ms);
       current_zone = GLANCE_ZONE_ROLL;
       send_glance_zone(current_zone);
     }
-  }
-  else if (current_zone != GLANCE_ZONE_NONE) {
-    current_zone = GLANCE_ZONE_NONE;
-    send_glance_zone(current_zone);
+    else if (current_zone != GLANCE_ZONE_NONE) {
+      current_zone = GLANCE_ZONE_NONE;
+      send_glance_zone(current_zone);
+    }
   }
 
+  // Create inputs for timer experies
   if (TIMER_EXPIRED(roll_timer, reading_time_ms)) {
     RESET_TIMER(roll_timer);
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_TIMER_EXPIRED, reading_time_ms);
