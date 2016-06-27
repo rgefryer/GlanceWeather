@@ -99,6 +99,13 @@ typedef struct time_ms_t {
 
 static inline void send_glance_output(GlanceOutput output) {
   glance_data.result = output;
+  glance_data.event = GLANCE_EVENT_OUTPUT;
+  configured_glance_result_callback(&glance_data);
+}
+
+static inline void send_glance_zone(GlanceZone zone) {
+  glance_data.zone = zone;
+  glance_data.event = GLANCE_EVENT_ZONE;
   configured_glance_result_callback(&glance_data);
 }
 
@@ -317,16 +324,33 @@ static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uin
 }
 
 
+GlanceZone current_zone = GLANCE_ZONE_NONE;
 static void process_accelerometer_reading(AccelData *reading, uint64_t reading_time_ms) {
 
   if (WITHIN_ACCELEROMETER_ZONE(active_zone, *reading)) {
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ACTIVE_ZONE, reading_time_ms);
+    if (current_zone != GLANCE_ZONE_ACTIVE) {
+      current_zone = GLANCE_ZONE_ACTIVE;
+      send_glance_zone(current_zone);
+    }
   }
   else if (WITHIN_ACCELEROMETER_ZONE(inactive_zone, *reading)) { 
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_INACTIVE_ZONE, reading_time_ms);
+    if (current_zone != GLANCE_ZONE_INACTIVE) {
+      current_zone = GLANCE_ZONE_INACTIVE;
+      send_glance_zone(current_zone);
+    }
   }
   else if (WITHIN_ACCELEROMETER_ZONE(roll_zone, *reading)) { 
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_ZONE, reading_time_ms);
+    if (current_zone != GLANCE_ZONE_ROLL) {
+      current_zone = GLANCE_ZONE_ROLL;
+      send_glance_zone(current_zone);
+    }
+  }
+  else if (current_zone != GLANCE_ZONE_NONE) {
+    current_zone = GLANCE_ZONE_NONE;
+    send_glance_zone(current_zone);
   }
 
   if (TIMER_EXPIRED(roll_timer, reading_time_ms)) {
@@ -361,6 +385,8 @@ static void prv_accel_handler(AccelData *data, uint32_t num_samples) {
   else if (!prefer_fast_sampling && fast_sampling_active) {
     app_timer_register(10, start_slow_accelerometer_sampling, NULL);
   }
+
+
 }
 
 static void tap_event_handler(AccelAxisType axis, int32_t direction) {

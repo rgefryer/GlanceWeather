@@ -8,8 +8,22 @@ typedef enum {
   GLANCE_OUTPUT_ROLL = 2,
 } GlanceOutput;
 
+typedef enum {
+  GLANCE_ZONE_INACTIVE = 0,
+  GLANCE_ZONE_ACTIVE = 1,
+  GLANCE_ZONE_ROLL = 2,
+  GLANCE_ZONE_NONE = 3,
+} GlanceZone;
+
+typedef enum {
+  GLANCE_EVENT_ZONE = 0,
+  GLANCE_EVENT_OUTPUT = 1,
+} GlanceEvent;
+
 typedef struct GlanceResult {
+  GlanceEvent event;
   GlanceOutput result;
+  GlanceZone zone;
 } GlanceResult;
 
 typedef void (*GlanceResultHandler)(GlanceResult *data);
