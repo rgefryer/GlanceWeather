@@ -321,7 +321,7 @@ static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uin
           break;
 
         case GLANCE_INPUT_LONG_TIMER_EXPIRED:
-          if (current_zone == GLANCE_ZONE_ACTIVE) {
+          if ((current_zone == GLANCE_ZONE_ACTIVE) || (current_zone == GLANCE_ZONE_NONE)) {
             new_state = GLANCE_STATE_IDLE_ACTIVE;
           }
           else {
@@ -345,10 +345,10 @@ static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uin
       switch (input) {
         case GLANCE_INPUT_DROPPED_ZONE:
         case GLANCE_INPUT_ROLL_ZONE:
-        case GLANCE_INPUT_UNKNOWN_ZONE:
           new_state = GLANCE_STATE_NOT_ACTIVE;
           break;
 
+        case GLANCE_INPUT_UNKNOWN_ZONE:
         case GLANCE_INPUT_ACTIVE_ZONE:
         case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
         case GLANCE_INPUT_LONG_TIMER_EXPIRED:
