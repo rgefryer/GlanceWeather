@@ -5,34 +5,40 @@
 #define DEBUG
 
 typedef enum {
-  GLANCE_STATE_NOT_ACTIVE = 0,   // User is probably not looking at the watch
-  GLANCE_STATE_ACTIVE = 1,       // User might well be looking at the watch
-  GLANCE_STATE_ACTIVE_ROLL = 2,  // User might be part way through a wrist roll
-  GLANCE_STATE_IDLE_ACTIVE = 3,  // Activity expired, but not yet idle
+  GLANCE_STATE_NOT_ACTIVE = 0,      // User is probably not looking at the watch
+  GLANCE_STATE_PENDING_ACTIVE = 1,  // Waiting in the active zone               
+  GLANCE_STATE_NEW_ACTIVE = 2,          // User might well be looking at the watch
+  GLANCE_STATE_OLD_ACTIVE = 3,          // User might well be looking at the watch
+  GLANCE_STATE_IDLE_ACTIVE = 4,     // Activity expired, but not yet idle
+  GLANCE_STATE_ROLL = 5,     // User might be part way through a wrist roll
 } GlanceFSMState;
 
 typedef enum {
-  GLANCE_INPUT_INACTIVE_ZONE = 0,
+  GLANCE_INPUT_DROPPED_ZONE = 0,
   GLANCE_INPUT_ACTIVE_ZONE = 1,
   GLANCE_INPUT_ROLL_ZONE = 2,
-  GLANCE_INPUT_SHORT_TIMER_EXPIRED = 3,
-  GLANCE_INPUT_LONG_TIMER_EXPIRED = 4,
-  GLANCE_INPUT_ROLL_TIMER_EXPIRED = 5,
+  GLANCE_INPUT_UNKNOWN_ZONE = 3,
+  GLANCE_INPUT_SHORT_TIMER_EXPIRED = 4,
+  GLANCE_INPUT_LONG_TIMER_EXPIRED = 5,
+  GLANCE_INPUT_ROLL_TIMER_EXPIRED = 6,
+  GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED = 7,
 } GlanceFSMInput;
 
 GlanceFSMState fsm_state = GLANCE_STATE_NOT_ACTIVE;
-uint64_t short_timer = 0;  // Expiry time in milliseconds.  When running, the light may be on.
-uint64_t long_timer = 0;   // Expiry time in milliseconds.  When running, the watch may be being looked at.
-uint64_t roll_timer = 0;   // Expiry time in milliseconds
+uint64_t new_active_timer = 0;  // Expiry time in milliseconds.  When running, the light may be on.
+uint64_t old_active_timer = 0;  // Expiry time in milliseconds.  When running, the watch may be being looked at.
+uint64_t roll_timer = 0;        // Expiry time in milliseconds
+uint64_t activation_timer = 0;  // Expiry time in milliseconds
 
 #define SET_TIMER(TIMER, MS, CURR_TIME) TIMER = (CURR_TIME + MS)
 #define TIMER_ACTIVE(TIMER, CURR_TIME) (TIMER > CURR_TIME)
 #define TIMER_EXPIRED(TIMER, CURR_TIME) ((TIMER != 0) && (TIMER <= CURR_TIME))
 #define RESET_TIMER(TIMER) TIMER = 0
 
-#define SHORT_TIMER_DURATION_MS   5000
-#define LONG_TIMER_DURATION_MS   30000
-#define ROLL_TIMER_DURATION_MS     500
+#define NEW_ACTIVE_TIMER_DURATION_MS   5000
+#define OLD_ACTIVE_TIMER_DURATION_MS  30000
+#define ROLL_TIMER_DURATION_MS          500
+#define ACTIVATION_TIMER_DURATION_MS    400
 
 #ifndef WITHIN
 #define WITHIN(n, min, max) ((n) >= (min) && (n) <= (max))
@@ -63,7 +69,7 @@ glancing_zone active_zone = {
 };
 
 // arm hanging downward, select button pointing toward ground
-glancing_zone inactive_zone = {
+glancing_zone dropped_zone = {
   .x_segment = { 800, 1000},
   .y_segment = { -500, 500},
   .z_segment = { -800, 800}
@@ -75,6 +81,8 @@ glancing_zone roll_zone = {
   .y_segment = { 600, 1200},  // Lower Y was originally 850 - now easier to hit at low sample rate
   .z_segment = { -500, 500}
 };
+
+GlanceZone current_zone = GLANCE_ZONE_NONE;
 
 static void prv_accel_handler(AccelData *data, uint32_t num_samples);
 
@@ -111,7 +119,7 @@ static inline void send_glance_zone(GlanceZone zone) {
 
 static inline bool is_glancing(uint64_t reading_time_ms) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "is_glancing");
-  return TIMER_ACTIVE(short_timer, reading_time_ms);
+  return TIMER_ACTIVE(new_active_timer, reading_time_ms);
 }
 
 static void store_current_time(time_ms_t *time_data)
@@ -212,110 +220,172 @@ static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uin
   GlanceFSMState new_state = state;
 
   switch (state) {
+
+    // Watch is idle, we don't expect anyone to be looking at it,
+    // no timers running, sampling rate is slow.
     case GLANCE_STATE_NOT_ACTIVE:
-      if (input == GLANCE_INPUT_ACTIVE_ZONE) {
-        new_state = GLANCE_STATE_ACTIVE;
-        SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
-        SET_TIMER(long_timer, LONG_TIMER_DURATION_MS, time_of_input_ms);
-        prefer_fast_sampling = true;
-        send_glance_output(GLANCE_OUTPUT_ACTIVE);
-        keep_light_on_while_active();
+      switch (input) {
+
+        case GLANCE_INPUT_ACTIVE_ZONE:
+          new_state = GLANCE_STATE_PENDING_ACTIVE;
+          prefer_fast_sampling = true;
+          SET_TIMER(activation_timer, ACTIVATION_TIMER_DURATION_MS, time_of_input_ms);
+          break;
+
+        case GLANCE_INPUT_DROPPED_ZONE:
+        case GLANCE_INPUT_ROLL_ZONE:
+        case GLANCE_INPUT_UNKNOWN_ZONE:
+        case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
+        case GLANCE_INPUT_LONG_TIMER_EXPIRED:
+        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
+        case GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED:
+          break;
       }
       break;
 
-    case GLANCE_STATE_ACTIVE:
+    // In Active zone, waiting for a timeout to decide we're really active.
+    // activation_timer running, sampling rate is fast.
+    case GLANCE_STATE_PENDING_ACTIVE:
       switch (input) {
-        case GLANCE_INPUT_INACTIVE_ZONE:
+
+        case GLANCE_INPUT_ROLL_ZONE:
+        case GLANCE_INPUT_DROPPED_ZONE:
+        case GLANCE_INPUT_UNKNOWN_ZONE:
           new_state = GLANCE_STATE_NOT_ACTIVE;
-          send_glance_output(GLANCE_OUTPUT_IDLE);
-          RESET_TIMER(roll_timer);
-          RESET_TIMER(short_timer);
-          RESET_TIMER(long_timer);
+          RESET_TIMER(activation_timer);
           prefer_fast_sampling = false;
           break;
 
+        case GLANCE_INPUT_ACTIVE_ZONE:
+        case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
         case GLANCE_INPUT_LONG_TIMER_EXPIRED:
-          new_state = GLANCE_STATE_IDLE_ACTIVE;
+        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
+          break;
+
+        case GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED:
+          new_state = GLANCE_STATE_NEW_ACTIVE;
+          SET_TIMER(new_active_timer, NEW_ACTIVE_TIMER_DURATION_MS, time_of_input_ms);
+          SET_TIMER(old_active_timer, OLD_ACTIVE_TIMER_DURATION_MS, time_of_input_ms);
+          send_glance_output(GLANCE_OUTPUT_ACTIVE);
+          keep_light_on_while_active();
+          break;
+      }
+      break;
+
+    // Watch has recently gone active.  new_active_timer is running.
+    // sampling rate is fast.
+    case GLANCE_STATE_NEW_ACTIVE:
+      switch (input) {
+        case GLANCE_INPUT_DROPPED_ZONE:
+          new_state = GLANCE_STATE_NOT_ACTIVE;
           send_glance_output(GLANCE_OUTPUT_IDLE);
-          RESET_TIMER(roll_timer);
-          SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
-          RESET_TIMER(long_timer);
+          RESET_TIMER(new_active_timer);
           prefer_fast_sampling = false;
           break;
 
         case GLANCE_INPUT_ROLL_ZONE:
-          new_state = GLANCE_STATE_ACTIVE_ROLL;
+          new_state = GLANCE_STATE_ROLL;
           SET_TIMER(roll_timer, ROLL_TIMER_DURATION_MS, time_of_input_ms);
           break;
 
         case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
-          prefer_fast_sampling = false;
-          break;
-        
-        default:
-          break;
-      }
-      break;
-
-    case GLANCE_STATE_IDLE_ACTIVE:
-      switch (input) {
-        case GLANCE_INPUT_INACTIVE_ZONE:
-        case GLANCE_INPUT_ROLL_ZONE:
-        case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
-          new_state = GLANCE_STATE_NOT_ACTIVE;
-          send_glance_output(GLANCE_OUTPUT_IDLE);
-          RESET_TIMER(roll_timer);
-          RESET_TIMER(short_timer);
-          RESET_TIMER(long_timer);
+          new_state = GLANCE_STATE_OLD_ACTIVE;
+          SET_TIMER(old_active_timer, OLD_ACTIVE_TIMER_DURATION_MS, time_of_input_ms);
           prefer_fast_sampling = false;
           break;
 
+        case GLANCE_INPUT_UNKNOWN_ZONE:
         case GLANCE_INPUT_ACTIVE_ZONE:
-          prefer_fast_sampling = false;
-          SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
-          break;
-        
-        default:
-          break;
-      }
-      break;
-
-    case GLANCE_STATE_ACTIVE_ROLL:
-      switch (input) {
-        case GLANCE_INPUT_INACTIVE_ZONE:
         case GLANCE_INPUT_LONG_TIMER_EXPIRED:
+        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
+        case GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED:
+         break;
+      }
+      break;
+
+    // Watch has been active long enough for the light to go out.  old_active_timer is running.
+    // sampling rate is slow.
+    case GLANCE_STATE_OLD_ACTIVE:
+      switch (input) {
+        case GLANCE_INPUT_DROPPED_ZONE:
           new_state = GLANCE_STATE_NOT_ACTIVE;
           send_glance_output(GLANCE_OUTPUT_IDLE);
-          RESET_TIMER(roll_timer);
-          RESET_TIMER(short_timer);
-          RESET_TIMER(long_timer);
-          prefer_fast_sampling = false;
+          RESET_TIMER(old_active_timer);
           break;
 
-        case GLANCE_INPUT_ACTIVE_ZONE:
-          RESET_TIMER(roll_timer);
-          new_state = GLANCE_STATE_ACTIVE;
-          send_glance_output(GLANCE_OUTPUT_ROLL);
-          SET_TIMER(short_timer, SHORT_TIMER_DURATION_MS, time_of_input_ms);
-          SET_TIMER(long_timer, LONG_TIMER_DURATION_MS, time_of_input_ms);
-          keep_light_on_while_active();
+        case GLANCE_INPUT_ROLL_ZONE:
+          new_state = GLANCE_STATE_ROLL;
+          RESET_TIMER(old_active_timer);
+          SET_TIMER(roll_timer, ROLL_TIMER_DURATION_MS, time_of_input_ms);
           prefer_fast_sampling = true;
           break;
 
-        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
-          new_state = GLANCE_STATE_ACTIVE;
+        case GLANCE_INPUT_LONG_TIMER_EXPIRED:
+          if (current_zone == GLANCE_ZONE_ACTIVE) {
+            new_state = GLANCE_STATE_IDLE_ACTIVE;
+          }
+          else {
+            new_state = GLANCE_STATE_NOT_ACTIVE;
+          }
+          send_glance_output(GLANCE_OUTPUT_IDLE);
           break;
 
+        case GLANCE_INPUT_ACTIVE_ZONE:
+        case GLANCE_INPUT_UNKNOWN_ZONE:
         case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
-          new_state = GLANCE_STATE_ACTIVE;
-          prefer_fast_sampling = false;
-          break;
-        
-        default:
+        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
+        case GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED:
           break;
       }
-    
-    default:
+      break;
+
+    // Watch is idle (active state has timed out) but still in the 
+    // active zone.  No timers are running.  sampling_rate is slow.
+    case GLANCE_STATE_IDLE_ACTIVE:
+      switch (input) {
+        case GLANCE_INPUT_DROPPED_ZONE:
+        case GLANCE_INPUT_ROLL_ZONE:
+        case GLANCE_INPUT_UNKNOWN_ZONE:
+          new_state = GLANCE_STATE_NOT_ACTIVE;
+          break;
+
+        case GLANCE_INPUT_ACTIVE_ZONE:
+        case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
+        case GLANCE_INPUT_LONG_TIMER_EXPIRED:
+        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
+        case GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED:
+          break;
+      }
+      break;
+
+    // Watch has been rolled from active, hopefully waiting to be rolled back.
+    // roll_timer is running.  new_active_timer may be running.  sampling_rate is fast.
+    case GLANCE_STATE_ROLL:
+      switch (input) {
+        case GLANCE_INPUT_DROPPED_ZONE:
+        case GLANCE_INPUT_ROLL_TIMER_EXPIRED:
+          new_state = GLANCE_STATE_NOT_ACTIVE;
+          send_glance_output(GLANCE_OUTPUT_IDLE);
+          RESET_TIMER(roll_timer);
+          RESET_TIMER(new_active_timer);
+          prefer_fast_sampling = false;
+          break;
+
+        case GLANCE_INPUT_ACTIVE_ZONE:
+          RESET_TIMER(roll_timer);
+          SET_TIMER(new_active_timer, NEW_ACTIVE_TIMER_DURATION_MS, time_of_input_ms);
+          new_state = GLANCE_STATE_NEW_ACTIVE;
+          keep_light_on_while_active();
+          send_glance_output(GLANCE_OUTPUT_ROLL);
+          break;
+
+        case GLANCE_INPUT_ROLL_ZONE:
+        case GLANCE_INPUT_UNKNOWN_ZONE:
+        case GLANCE_INPUT_SHORT_TIMER_EXPIRED:
+        case GLANCE_INPUT_LONG_TIMER_EXPIRED:
+        case GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED:
+          break;
+      } 
       break;
   }
 
@@ -324,7 +394,6 @@ static GlanceFSMState glance_fsm(GlanceFSMState state, GlanceFSMInput input, uin
 }
 
 
-GlanceZone current_zone = GLANCE_ZONE_NONE;
 static void process_accelerometer_reading(AccelData *reading, uint64_t reading_time_ms) {
 
   // Start by testing if the zone is unchanged (for efficiency)
@@ -337,7 +406,7 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
       break;
 
     case GLANCE_ZONE_INACTIVE:
-      if (WITHIN_ACCELEROMETER_ZONE(inactive_zone, *reading)) {
+      if (WITHIN_ACCELEROMETER_ZONE(dropped_zone, *reading)) {
         zone_not_changed = true;
       }
       break;
@@ -360,8 +429,8 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
       current_zone = GLANCE_ZONE_ACTIVE;
       }
     }
-    else if ((current_zone != GLANCE_ZONE_INACTIVE) && WITHIN_ACCELEROMETER_ZONE(inactive_zone, *reading)) { 
-      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_INACTIVE_ZONE, reading_time_ms);
+    else if ((current_zone != GLANCE_ZONE_INACTIVE) && WITHIN_ACCELEROMETER_ZONE(dropped_zone, *reading)) { 
+      fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_DROPPED_ZONE, reading_time_ms);
       current_zone = GLANCE_ZONE_INACTIVE;
       send_glance_zone(current_zone);
     }
@@ -371,8 +440,11 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
       send_glance_zone(current_zone);
     }
     else if (current_zone != GLANCE_ZONE_NONE) {
-      current_zone = GLANCE_ZONE_NONE;
-      send_glance_zone(current_zone);
+      if (current_zone != GLANCE_ZONE_NONE) {
+        fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_UNKNOWN_ZONE, reading_time_ms);
+        current_zone = GLANCE_ZONE_NONE;
+        send_glance_zone(current_zone);
+      }
     }
   }
 
@@ -381,13 +453,17 @@ static void process_accelerometer_reading(AccelData *reading, uint64_t reading_t
     RESET_TIMER(roll_timer);
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ROLL_TIMER_EXPIRED, reading_time_ms);
   }
-  if (TIMER_EXPIRED(short_timer, reading_time_ms)) {
-    RESET_TIMER(short_timer);
+  if (TIMER_EXPIRED(new_active_timer, reading_time_ms)) {
+    RESET_TIMER(new_active_timer);
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_SHORT_TIMER_EXPIRED, reading_time_ms);
   }
-  if (TIMER_EXPIRED(long_timer, reading_time_ms)) {
-    RESET_TIMER(long_timer);
+  if (TIMER_EXPIRED(old_active_timer, reading_time_ms)) {
+    RESET_TIMER(old_active_timer);
     fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_LONG_TIMER_EXPIRED, reading_time_ms);
+  }
+  if (TIMER_EXPIRED(activation_timer, reading_time_ms)) {
+    RESET_TIMER(activation_timer);
+    fsm_state = glance_fsm(fsm_state, GLANCE_INPUT_ACTIVATION_TIMER_EXPIRED, reading_time_ms);
   }
 }
 
