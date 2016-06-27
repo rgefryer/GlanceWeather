@@ -6,8 +6,9 @@
 /*
 Next up...
 
-- Make weather retrieval get the forecast informantion I want
 - Consider extending the roll zone to make it easier to hit at low sample frequency
+- Always check current glance zone first, and don't pass input to the FSM if no change
+- Make weather retrieval get the forecast informantion I want
 - Supply the forecast information to the watch
 - Cache the forecast information on the watch
 - Periodic forecast refresh
