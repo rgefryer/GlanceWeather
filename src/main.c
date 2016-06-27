@@ -6,10 +6,8 @@
 /*
 Next up...
 
-- When idle
-  - Run accelerometer at 10Hz
-  - Only look at the last sample
 - Make weather retrieval get the forecast informantion I want
+- Consider extending the roll zone to make it easier to hit at low sample frequency
 - Supply the forecast information to the watch
 - Cache the forecast information on the watch
 - Periodic forecast refresh
@@ -100,7 +98,7 @@ void glancing_callback(GlanceResult *data) {
       break;
 
     case GLANCE_EVENT_ZONE:
-      switch (data->result) {
+      switch (data->zone) {
         case GLANCE_ZONE_INACTIVE:
           strncpy(zone_string, "INACTIVE", sizeof(zone_string) - 1);
           break;
