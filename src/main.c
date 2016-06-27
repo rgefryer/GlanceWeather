@@ -6,8 +6,11 @@
 /*
 Next up...
 
-- Consider extending the roll zone to make it easier to hit at low sample frequency
-- Always check current glance zone first, and don't pass input to the FSM if no change
+- Glance enhancements
+  - Consider extending the roll zone to make it easier to hit at low sample frequency
+  - Always check current glance zone first, and don't pass input to the FSM if no change
+  - Consider only changing to active after a period of solid active zone
+  - Condider only lighting on roll, or quick transition to active from idle
 - Make weather retrieval get the forecast informantion I want
 - Supply the forecast information to the watch
 - Cache the forecast information on the watch
