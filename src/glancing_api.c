@@ -169,7 +169,7 @@ bool fast_sampling_active = false;
 uint32_t sample_duration_ms = 0;
 
 // Setup motion accel handler with low sample rate
-// 10hz with buffer for 10 samples for 1 second update rate
+// 10hz with buffer for 5 samples for 0.5 second poll rate
 static void start_slow_accelerometer_sampling(void *data) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "start_slow_accelerometer_sampling");
  
@@ -178,11 +178,11 @@ static void start_slow_accelerometer_sampling(void *data) {
   }
   
   if (fast_sampling_active) {
-    accel_service_set_samples_per_update(10);
+    accel_service_set_samples_per_update(5);
     fast_sampling_active = false;  
   }
   else {
-    accel_data_service_subscribe(10, prv_accel_handler);
+    accel_data_service_subscribe(5, prv_accel_handler);
   }
   accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
   slow_sampling_active = true;  
@@ -191,7 +191,7 @@ static void start_slow_accelerometer_sampling(void *data) {
 }
 
 // Setup motion accel handler with high sample rate
-// 25hz with buffer for 5 samples for 0.2 second update rate
+// 25hz with buffer for 5 samples for 0.2 second poll rate
 static void start_fast_accelerometer_sampling(void *data) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "start_fast_accelerometer_sampling");
   if (fast_sampling_active) {
@@ -471,14 +471,15 @@ static void prv_accel_handler(AccelData *data, uint32_t num_samples) {
 
   uint64_t input_time_ms;
 
+  // Efficiency when idle, but has the downside of slowing down activation
   uint32_t first_sample = 0;
-  if (fsm_state == GLANCE_STATE_NOT_ACTIVE) {
-    first_sample = num_samples - 1;
-    input_time_ms = current_time.milliseconds;
-  }
-  else {
+  //if (fsm_state == GLANCE_STATE_NOT_ACTIVE) {
+  //  first_sample = num_samples - 1;
+  //  input_time_ms = current_time.milliseconds;
+  //}
+  //else {
     input_time_ms = current_time.milliseconds - (num_samples * sample_duration_ms);
-  }
+  //}
   
   for (uint32_t i = first_sample; i < num_samples; i++) {
     process_accelerometer_reading(&(data[i]), input_time_ms);

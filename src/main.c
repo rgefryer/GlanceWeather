@@ -6,8 +6,6 @@
 /*
 Next up...
 
-- Make weather retrieval get the forecast informantion I want
-- Supply the forecast information to the watch
 - Cache the forecast information on the watch
 - Periodic forecast refresh
 - Main watch display

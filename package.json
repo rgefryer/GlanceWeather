@@ -26,7 +26,8 @@
             "FIOW_CONDITIONCODE",
             "FIOW_BADKEY",
             "FIOW_LOCATIONUNAVAILABLE",
-            "JSReady"
+            "JSReady",
+            "FIOW_DATA"
         ],
         "projectType": "native",
         "resources": {

@@ -24,50 +24,140 @@ var ForecastIoWeather = function() {
     xhr.send();
   };
 
+  this.beaufort_from_ms = function(speed_ms) {
+    if (speed_ms < 5.5) {
+      if (speed_ms < 1.6) {
+        if (speed_ms < 0.3) {
+          return 0;
+        } else {
+          return 1;
+        }
+      } else {
+        if (speed_ms < 3.4) {
+          return 2;
+        } else {
+          return 3;
+        }
+      }
+    } else {
+      if (speed_ms < 17.2) {
+        if (speed_ms < 10.8) {
+          if (speed_ms < 8) {
+            return 4;
+          } else {
+            return 5;
+          }
+        } else {
+          if (speed_ms < 13.9) {
+            return 6;
+          } else {
+            return 7;
+          }
+        }
+      } else {
+        if (speed_ms < 24.5) {
+          if (speed_ms < 20.8) {
+            return 8;
+          } else {
+            return 9;
+          }
+        } else {
+          if (speed_ms < 28.5) {
+            return 10;
+          } else {
+            if (speed_ms < 32.7) {
+              return 11;
+            } else {
+              return 12;
+            }
+          }
+        }
+      }
+    }
+  };
+  
   this._getWeatherF_IO = function(coords) {
     var url = 'https://api.forecast.io/forecast/' + this._apiKey + '/' +
-      coords.latitude + ',' + coords.longitude + '?exclude=minutely,hourly,daily,alerts,flag&units=si';
+      coords.latitude + ',' + coords.longitude + '?exclude=currently,minutely,daily,alerts,flag&units=si&extend=hourly';
 
-    console.log('weather: Contacting forecast.io...');
+    console.log('weather: Contacting forecast.io... ' + url);
     // console.log(url);
 
     this._xhrWrapper(url, 'GET', function(req) {
       console.log('weather: Got API response!');
       if(req.status == 200) {
+        
+        // Send the hourly data as 7 messages of 24 hours
         var json = JSON.parse(req.response);
+        var data = json.hourly.data;
+        var day = 0;
+        var data_list = [day];
+        var next_time = data[0].time;
+        for (var ii in data) {
+          //var time = data[ii].time;
+        
+          
+          // "time":1467068400,     - not required, we know the sequence.  1 byte to confirm, if seperate messages
+          //                          increases by 3600 each hour
+          
+          // 5 bytes/hour * 168 hours = 840 bytes.   Or 120 bytes/day.
+          // "precipIntensity":0,   - mm/hour, 1 byte (= 1 inch!)
+          // "precipProbability":0, - 0->1, scale to 1 byte
+          // "temperature":10.88,   - 1 byte, no decimal 0 is -50.
+          // "windSpeed":4.22,      - 16 directions * 12bft = 128 options.  1 byte.
+          // "windBearing":236,
+          // "cloudCover":0.27,     - 0->1, scale to 1 byte
 
-        var condition = json.currently.icon;
-        if(condition === 'clear-day' || condition === 'clear-night'){
-          condition = conditions.ClearSky;
+          // If results are missing, create empty results
+          while (next_time < data[ii].time) {
+            next_time += 3600;
+            data_list.push(0);
+            data_list.push(0);
+            data_list.push(0);
+            data_list.push(0);
+            data_list.push(0);
+            
+            if (data_list.length == (24 * 5)) {
+              var message = {
+                'FIOW_REPLY': 1,
+                'FIOW_DATA': data_list
+              };
+              Pebble.sendAppMessage(message);            
+              day += 1;
+              data_list = [day];
+            }            
+          }
+          
+          next_time = data[ii].time + 3600;
+          
+          if (data[ii].precipIntensity > 255) {
+            data_list.push(255);
+          }
+          else {
+            data_list.push(Math.ceil(data[ii].precipIntensity));
+          }
+          data_list.push(Math.floor(data[ii].precipProbability * 255 ));
+          
+          data_list.push(Math.round(data[ii].temperature) + 50);
+          var wind_val = Math.round(data[ii].windBearing / 22.5) % 16;
+          wind_val += 16 * this.beaufort_from_ms(data[ii].windSpeed);
+          data_list.push(wind_val);
+          data_list.push(Math.floor(data[ii].cloudCover * 255 ));
+          
+          if (data_list.length == (24 * 5)) {
+            var message3 = {
+              'FIOW_REPLY': 1,
+              'FIOW_DATA': data_list
+            };
+            Pebble.sendAppMessage(message3);            
+            day += 1;
+            data_list = [day];
+          }
         }
-        else if(condition === 'partly-cloudy-day' || condition === 'partly-cloudy-night'){
-          condition = conditions.FewClouds;
-        }
-        else if(condition === 'cloudy'){
-          condition = conditions.BrokenClouds;
-        }
-        else if(condition === 'rain'){
-          condition = conditions.Rain;
-        }
-        else if(condition === 'thunderstorm'){
-          condition = conditions.Thunderstorm;
-        }
-        else if(condition === 'snow' || condition === 'sleet'){
-          condition = conditions.Thunderstorm;
-        }
-        else if(condition === 'fog'){
-          condition = conditions.Mist;
-        }
-        else {
-          condition = conditions.Unknown;
-        }
-
-        var message = {
+  
+        // Send the location information
+        var message2 = {
           'FIOW_REPLY': 1,
-          'FIOW_TEMPK': Math.round(json.currently.temperature + 273.15),
-          'FIOW_DESCRIPTION': json.currently.summary,
-          'FIOW_DAY': json.currently.icon.indexOf("-day") > 0 ? 1 : 0,
-          'FIOW_CONDITIONCODE':condition
         };
 
         url = 'http://nominatim.openstreetmap.org/reverse?format=json&lat=' + coords.latitude + '&lon=' + coords.longitude;
@@ -75,8 +165,8 @@ var ForecastIoWeather = function() {
           if(req.status == 200) {
             var json = JSON.parse(req.response);
             var city = json.address.village || json.address.town || json.address.city || json.address.county || '';
-            message['FIOW_NAME'] = city;
-            Pebble.sendAppMessage(message);
+            message2['FIOW_NAME'] = city;
+            Pebble.sendAppMessage(message2);
           } else {
             // console.log('weather: Error fetching data (HTTP Status: ' + req.status + ')');
           }
