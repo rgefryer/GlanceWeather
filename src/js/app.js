@@ -91,7 +91,7 @@ var ForecastIoWeather = function() {
         var json = JSON.parse(req.response);
         var data = json.hourly.data;
         var day = 0;
-        var data_list = [day];
+        var data_list = [data[0].time & 0xff, (data[0].time >> 8) & 0xff, (data[0].time >> 16) & 0xff, (data[0].time >> 24) & 0xff, day];
         var next_time = data[0].time;
         for (var ii in data) {
           //var time = data[ii].time;
@@ -123,8 +123,8 @@ var ForecastIoWeather = function() {
                 'FIOW_DATA': data_list
               };
               Pebble.sendAppMessage(message);            
+              data_list = [(next_time + 3600) & 0xff, ((next_time + 3600) >> 8) & 0xff, ((next_time + 3600) >> 16) & 0xff, ((next_time + 3600) >> 24) & 0xff, day];
               day += 1;
-              data_list = [day];
             }            
           }
           
@@ -150,8 +150,8 @@ var ForecastIoWeather = function() {
               'FIOW_DATA': data_list
             };
             Pebble.sendAppMessage(message3);            
+            data_list = [next_time & 0xff, (next_time >> 8) & 0xff, (next_time >> 16) & 0xff, (next_time >> 24) & 0xff, day];
             day += 1;
-            data_list = [day];
           }
         }
   

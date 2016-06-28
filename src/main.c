@@ -6,8 +6,6 @@
 /*
 Next up...
 
-- Cache the forecast information on the watch
-- Periodic forecast refresh
 - Main watch display
   - Time
   - Bluetooth

@@ -11,31 +11,43 @@ static char s_api_key[33];
 static ForecastIOWeatherCoordinates s_coordinates;
 static ForecastIOWeatherCallback *s_weather_callback;
 
+static AppTimer *s_timeout_timer;
 static EventHandle s_event_handle;
+
+static void timeout_timer_handler(void *);
 
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *reply_tuple = dict_find(iter, MESSAGE_KEY_FIOW_REPLY);
   if(reply_tuple) {
-    Tuple *desc_tuple = dict_find(iter, MESSAGE_KEY_FIOW_DESCRIPTION);
-    strncpy(s_info->description, desc_tuple->value->cstring, FORECASTIO_WEATHER_BUFFER_SIZE);
-
+    
     Tuple *name_tuple = dict_find(iter, MESSAGE_KEY_FIOW_NAME);
-    strncpy(s_info->name, name_tuple->value->cstring, FORECASTIO_WEATHER_BUFFER_SIZE);
+    if (name_tuple) {
+      strncpy(s_info->name, name_tuple->value->cstring, FORECASTIO_WEATHER_BUFFER_SIZE);
+      
+      // Tell the user we're good to go
+      s_status = ForecastIOWeatherStatusAvailable;
+      s_callback(s_info, s_status);
+      
+      // Schedule another update in 30 mins
+        const int retry_interval_ms = 30 * 60 * 1000;
+        app_timer_register(retry_interval_ms, timeout_timer_handler, NULL);
+    }
 
-    Tuple *temp_tuple = dict_find(iter, MESSAGE_KEY_FIOW_TEMPK);
-    s_info->temp_k = (int16_t)temp_tuple->value->int32;
-    s_info->temp_c = s_info->temp_k - 273;
-    s_info->temp_f = ((s_info->temp_c * 9) / 5 /* *1.8 or 9/5 */) + 32;
-    s_info->timestamp = time(NULL);
+    Tuple *data_tuple = dict_find(iter, MESSAGE_KEY_FIOW_DATA);
+    if (data_tuple) {
+      uint8_t *data = data_tuple->value->data;
+      
+      uint32_t epoch_time = data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
+      uint32_t time_key = 2 * data[4];
+      uint32_t data_key = 2 * data[4] + 1;
+      
+      if (persist_exists(time_key)) persist_delete(time_key);
+      if (persist_exists(data_key)) persist_delete(data_key);
+      
+      persist_write_int(time_key, epoch_time);
+      persist_write_data(data_key, &data[5], 24 * 5);
+    }
 
-    Tuple *day_tuple = dict_find(iter, MESSAGE_KEY_FIOW_DAY);
-    s_info->day = day_tuple->value->int32 == 1;
-
-    Tuple *condition_tuple = dict_find(iter, MESSAGE_KEY_FIOW_CONDITIONCODE);
-    s_info->condition = condition_tuple->value->int32;
-
-    s_status = ForecastIOWeatherStatusAvailable;
-    s_callback(s_info, s_status);
   }
 
   Tuple *err_tuple = dict_find(iter, MESSAGE_KEY_FIOW_BADKEY);
@@ -59,6 +71,21 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
 static void fail_and_callback() {
   s_status = ForecastIOWeatherStatusFailed;
   s_callback(s_info, s_status);
+}
+
+static void outbox_failed_handler(DictionaryIterator *iter, 
+                                      AppMessageResult reason, void *context) {
+  // Message failed before timer elapsed, reschedule for later
+  if(s_timeout_timer) {
+    app_timer_cancel(s_timeout_timer);
+  }
+
+  // Inform the user of the failure
+  fail_and_callback();
+
+  // Use the timeout handler to perform the same action - resend the message
+  const int retry_interval_ms = 500;
+  app_timer_register(retry_interval_ms, timeout_timer_handler, NULL);
 }
 
 static bool fetch() {
@@ -85,9 +112,25 @@ static bool fetch() {
     return false;
   }
 
+  // Schedule the timeout timer
+  const int interval_ms = 1000;
+  s_timeout_timer = app_timer_register(interval_ms, timeout_timer_handler, NULL);  
+  
   s_status = ForecastIOWeatherStatusPending;
   s_callback(s_info, s_status);
   return true;
+}
+
+static void timeout_timer_handler(void *context) {
+  // Could update status here
+  
+  // Retry the message
+  fetch();
+}
+
+static void outbox_sent_handler(DictionaryIterator *iter, void *context) {
+  // Successful message, the timeout is not needed anymore for this message
+  app_timer_cancel(s_timeout_timer);
 }
 
 void forecast_io_weather_init(ForecastIOWeatherCallback *callback) {
@@ -103,6 +146,8 @@ void forecast_io_weather_init(ForecastIOWeatherCallback *callback) {
   events_app_message_request_inbox_size(200);
   events_app_message_request_outbox_size(100);
   s_event_handle = events_app_message_register_inbox_received(inbox_received_handler, NULL);
+  app_message_register_outbox_sent(outbox_sent_handler);
+  app_message_register_outbox_failed(outbox_failed_handler);
 }
 
 void forecast_io_weather_set_api_key(const char *api_key){

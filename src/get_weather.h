@@ -38,33 +38,10 @@ typedef enum {
 
 //! Struct containing weather data
 typedef struct {
-  //! Weather conditions string e.g: "Sky is clear"
-  char description[FORECASTIO_WEATHER_BUFFER_SIZE];
   //! Name of the location from the weather feed
   char name[FORECASTIO_WEATHER_BUFFER_SIZE];
-  //! Temperature in degrees Kelvin
-  int16_t temp_k;
-  int16_t temp_c;
-  int16_t temp_f;
-  //! day or night ?
-  bool day;
-  //! Condition code (see ForecastIOWeatherConditionCode values)
-  ForecastIOWeatherConditionCode condition;
-  //! Date that the data was received
-  time_t timestamp;
+
 } ForecastIOWeatherInfo;
-
-//! Possible weather providers
-typedef enum {
-  //! OpenWeatherMap
-  ForecastIOWeatherProviderOpenWeatherMap      = 0,
-  //! WeatherUnderground
-  ForecastIOWeatherProviderWeatherUnderground  = 1,
-  //! Forecast.io
-  ForecastIOWeatherProviderForecastIo          = 2,
-
-  ForecastIOWeatherProviderUnknown             = 1000,
-} ForecastIOWeatherProvider;
 
 //! Struct containing coordinates
 typedef struct {
