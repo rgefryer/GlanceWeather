@@ -6,15 +6,14 @@
 /*
 Next up...
 
-- Main watch display
-  - Time
-  - Bluetooth
-  - Battery
-  - Age of forecast
 - Weather displays
   - Today
   - Next 3 days
 
+- Main watch display
+  - Age of forecast
+  - Make it look nice!
+  
 - Config
   - API key
   - Frequency of updates
@@ -38,6 +37,13 @@ char glance_string[16] = "IDLE";
 static TextLayer *zone_text_layer;
 char zone_string[16] = "NONE";
 uint16_t roll_count = 0;
+
+char battery_string[16] = "100%";
+static TextLayer *battery_text_layer;
+
+char bt_string[16] = "BTOK";
+static TextLayer *bluetooth_text_layer;
+
 
 static GlanceOutput state = GLANCE_OUTPUT_IDLE;
 
@@ -154,7 +160,19 @@ static void weather_callback(ForecastIOWeatherInfo *info, ForecastIOWeatherStatu
   text_layer_set_text(weather_text_layer, weather_status); 
 }
 
+static void handle_battery(BatteryChargeState charge_state) {
 
+  if (charge_state.is_charging) {
+    snprintf(battery_string, sizeof(battery_string), "...");
+  } else {
+    snprintf(battery_string, sizeof(battery_string), "%d%%", charge_state.charge_percent);
+  }
+  text_layer_set_text(battery_text_layer, battery_string);
+}
+
+static void handle_bluetooth(bool connected) {
+  text_layer_set_text(bluetooth_text_layer, connected ? "BTOK" : "NOBT");
+}
 
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
@@ -193,6 +211,22 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(zone_text_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(zone_text_layer));
 
+  battery_text_layer = text_layer_create(GRect (0, center.y - 90, bounds.size.w / 2, 32)); 
+  text_layer_set_text(battery_text_layer, battery_string);
+  text_layer_set_font(battery_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_text_color(battery_text_layer, GColorWhite);
+  text_layer_set_background_color(battery_text_layer, GColorClear);
+  text_layer_set_text_alignment(battery_text_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(battery_text_layer));
+
+  bluetooth_text_layer = text_layer_create(GRect (bounds.size.w / 2, center.y - 90, bounds.size.w / 2, 32)); 
+  text_layer_set_text(bluetooth_text_layer, bt_string);
+  text_layer_set_font(bluetooth_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_text_color(bluetooth_text_layer, GColorWhite);
+  text_layer_set_background_color(bluetooth_text_layer, GColorClear);
+  text_layer_set_text_alignment(bluetooth_text_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(bluetooth_text_layer));
+
   // Force time update
   time_t current_time = time(NULL);
   struct tm *current_tm = localtime(&current_time);
@@ -201,12 +235,25 @@ static void window_load(Window *window) {
   // Setup tick time handler
   tick_timer_service_subscribe((MINUTE_UNIT), tick_handler);
 
+  battery_state_service_subscribe(handle_battery);
+
+  connection_service_subscribe((ConnectionHandlers) {
+    .pebble_app_connection_handler = handle_bluetooth
+  });  
+  
   // Enable Glancing with normal 5 second timeout, takeover backlight
   glancing_service_subscribe(true, false, glancing_callback);
+  
+  handle_battery(battery_state_service_peek());  
 }
 
 static void window_unload(Window *window) {
   text_layer_destroy(time_text_layer);
+  text_layer_destroy(weather_text_layer);
+  text_layer_destroy(glance_text_layer);
+  text_layer_destroy(zone_text_layer);
+  text_layer_destroy(battery_text_layer);
+  text_layer_destroy(bluetooth_text_layer);
 }
 
 static void init(void) {
