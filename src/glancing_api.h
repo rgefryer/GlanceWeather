@@ -29,8 +29,12 @@ typedef struct GlanceResult {
 typedef void (*GlanceResultHandler)(GlanceResult *data);
 
 // control_backlight - switch on light while the glance is active
-// legacy_flick_backlight - allow "flick backlight" when the glance is inactive
 void glancing_service_subscribe(bool control_backlight, 
-                                bool legacy_flick_backlight, GlanceResultHandler handler);
+                                bool legacy_flick_backlight,
+                                GlanceResultHandler handler);
+
+void glancing_service_update_control_backlight(bool control_backlight, bool legacy_flick_backlight);
+
+void glancing_service_update_timers(int32_t light_timer, int32_t active_timer, int32_t roll_time);
 
 void glancing_service_unsubscribe();

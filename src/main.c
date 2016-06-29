@@ -6,6 +6,14 @@
 /*
 Next up...
 
+- Glance
+  - looks like rate change might introduce a duff sample
+  - Consider writing a zone-testing program
+    - monitor for 30s, then buzz, then monitor the next 10s while displaying the last results.
+
+- Weather retrieval
+  - Store GPS co-ords, and re-use if location unavailable
+
 - Weather displays
   - Today
   - Next 3 days
@@ -44,6 +52,7 @@ static TextLayer *battery_text_layer;
 char bt_string[16] = "BTOK";
 static TextLayer *bluetooth_text_layer;
 
+static EventHandle s_cfg_event_handle;
 
 static GlanceOutput state = GLANCE_OUTPUT_IDLE;
 
@@ -174,6 +183,37 @@ static void handle_bluetooth(bool connected) {
   text_layer_set_text(bluetooth_text_layer, connected ? "BTOK" : "NOBT");
 }
 
+static bool backlight = true;
+static bool flick_backlight = true;
+static int32_t active_time = 5;
+static int32_t light_time = 30;
+static int32_t roll_time = 1000;
+static void cfg_inbox_received_handler(DictionaryIterator *iter, void *context) {
+  Tuple *backlight_t = dict_find(iter, MESSAGE_KEY_CfgBacklight);
+  Tuple *flick_backlight_t = dict_find(iter, MESSAGE_KEY_CfgFlickBacklight);
+  Tuple *active_time_t = dict_find(iter, MESSAGE_KEY_CfgActiveTime);
+  Tuple *light_time_t = dict_find(iter, MESSAGE_KEY_CfgLightTime);
+  Tuple *roll_time_t = dict_find(iter, MESSAGE_KEY_CfgRollTime);
+  Tuple *api_key_t = dict_find(iter, MESSAGE_KEY_CfgApiKey);
+
+  if (backlight_t || flick_backlight_t) {
+    if (backlight_t) backlight = backlight_t->value->int32 == 1;
+    if (flick_backlight_t) flick_backlight = flick_backlight_t->value->int32 == 1;
+    glancing_service_update_control_backlight(backlight, flick_backlight);
+  }
+
+  if (light_time_t || active_time_t || roll_time_t) {
+    if (active_time_t) active_time = active_time_t->value->int32;
+    if (light_time_t) light_time = light_time_t->value->int32;
+    if (roll_time_t) roll_time = roll_time_t->value->int32;
+    glancing_service_update_timers(1000*light_time, 1000*active_time, roll_time);
+  }
+ 
+  if (api_key_t) {
+    char *api_key = api_key_t->value->cstring;
+  }
+}
+
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -242,7 +282,7 @@ static void window_load(Window *window) {
   });  
   
   // Enable Glancing with normal 5 second timeout, takeover backlight
-  glancing_service_subscribe(true, false, glancing_callback);
+  glancing_service_subscribe(backlight, flick_backlight, glancing_callback);
   
   handle_battery(battery_state_service_peek());  
 }
@@ -267,12 +307,18 @@ static void init(void) {
   
   forecast_io_weather_init(weather_callback);
   forecast_io_weather_set_api_key("ddb8191c20d47e3cd47c91912e5c200c");
+  
+  // Set up sizes for config messages
+  events_app_message_request_inbox_size(128);
+  s_cfg_event_handle = events_app_message_register_inbox_received(cfg_inbox_received_handler, NULL);
+    
   events_app_message_open();
 }
 
 static void deinit(void) {
   window_destroy(window);
   forecast_io_weather_deinit();
+  events_app_message_unsubscribe(s_cfg_event_handle);
 }
 
 int main(void) {

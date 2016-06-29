@@ -1,6 +1,7 @@
 {
     "author": "richard@richardfryer.com",
     "dependencies": {
+        "pebble-clay": "^1.0.1",
         "pebble-events": "^1.0.2"
     },
     "keywords": [],
@@ -22,7 +23,13 @@
             "FIOW_BADKEY",
             "FIOW_LOCATIONUNAVAILABLE",
             "JSReady",
-            "FIOW_DATA"
+            "FIOW_DATA",
+            "CfgBacklight",
+            "CfgLightTime",
+            "CfgActiveTime",
+            "CfgApiKey",
+            "CfgFlickBacklight",
+            "CfgRollTime"
         ],
         "projectType": "native",
         "resources": {
@@ -34,7 +41,7 @@
             "basalt",
             "chalk"
         ],
-        "uuid": "466de116-67e2-4ce1-844a-3393dd2975c2",
+        "uuid": "a8dfe0a6-4dc5-4ec5-b923-bca178d78ec9",
         "watchapp": {
             "watchface": true
         }
