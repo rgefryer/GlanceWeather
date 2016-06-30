@@ -47,7 +47,7 @@ module.exports = [
         "type": "slider",
         "messageKey": "CfgRollTime",
         "defaultValue": "1000",
-        "label": "Light time (ms)",
+        "label": "Roll time (ms)",
         "min": 300,
         "max": 5000,
         "step": 200

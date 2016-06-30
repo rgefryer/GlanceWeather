@@ -210,7 +210,7 @@ static void cfg_inbox_received_handler(DictionaryIterator *iter, void *context) 
   }
  
   if (api_key_t) {
-    char *api_key = api_key_t->value->cstring;
+    forecast_io_weather_set_api_key(api_key_t->value->cstring);
   }
 }
 

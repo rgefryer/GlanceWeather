@@ -16,6 +16,8 @@ static EventHandle s_event_handle;
 
 static void timeout_timer_handler(void *);
 
+static bool js_ready = false;
+static bool pending_refresh = false;
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *reply_tuple = dict_find(iter, MESSAGE_KEY_FIOW_REPLY);
   if(reply_tuple) {
@@ -29,8 +31,11 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
       s_callback(s_info, s_status);
       
       // Schedule another update in 30 mins
+      if (!pending_refresh) {
         const int retry_interval_ms = 30 * 60 * 1000;
         app_timer_register(retry_interval_ms, timeout_timer_handler, NULL);
+        pending_refresh = true;        
+      }
     }
 
     Tuple *data_tuple = dict_find(iter, MESSAGE_KEY_FIOW_DATA);
@@ -64,6 +69,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   
   Tuple *ready_tuple = dict_find(iter, MESSAGE_KEY_JSReady);
   if(ready_tuple) {
+    js_ready = true;
     forecast_io_weather_fetch();
   }  
 }
@@ -125,6 +131,7 @@ static void timeout_timer_handler(void *context) {
   // Could update status here
   
   // Retry the message
+  pending_refresh = false;
   fetch();
 }
 
@@ -150,12 +157,15 @@ void forecast_io_weather_init(ForecastIOWeatherCallback *callback) {
   app_message_register_outbox_failed(outbox_failed_handler);
 }
 
-void forecast_io_weather_set_api_key(const char *api_key){
+void forecast_io_weather_set_api_key(const char *api_key) {
   if(!api_key) {
     s_api_key[0] = 0;
   }
   else {
     strncpy(s_api_key, api_key, sizeof(s_api_key));
+    if (js_ready) {
+      fetch();
+    }
   }
 }
 
