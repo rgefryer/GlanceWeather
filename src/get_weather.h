@@ -67,6 +67,10 @@ void forecast_io_weather_init(ForecastIOWeatherCallback *callback);
 //! @param api_key The API key for your weather provider.
 void forecast_io_weather_set_api_key(const char *api_key);
 
+//! Set the frequency of weather updates
+//! @param minutes The number of minutes before re-polling the weather provider.
+void forecast_io_weather_set_update_frequency(uint32_t minutes);
+
 //! Initialize the weather location if you don't want to use the GPS
 //! @param coordinates The coordinates (default is FORECASTIO_WEATHER_GPS_LOCATION)
 void forecast_io_weather_set_location(const ForecastIOWeatherCoordinates coordinates);

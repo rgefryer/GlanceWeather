@@ -11,13 +11,17 @@ static char s_api_key[33];
 static ForecastIOWeatherCoordinates s_coordinates;
 static ForecastIOWeatherCallback *s_weather_callback;
 
-static AppTimer *s_timeout_timer;
+static uint32_t s_update_frequency_mins = 30;
+static AppTimer *s_update_timer = NULL;
+static bool pending_refresh = false;
+
+
+static AppTimer *s_timeout_timer = NULL;
 static EventHandle s_event_handle;
 
 static void timeout_timer_handler(void *);
 
 static bool js_ready = false;
-static bool pending_refresh = false;
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *reply_tuple = dict_find(iter, MESSAGE_KEY_FIOW_REPLY);
   if(reply_tuple) {
@@ -30,11 +34,16 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
       s_status = ForecastIOWeatherStatusAvailable;
       s_callback(s_info, s_status);
       
-      // Schedule another update in 30 mins
-      if (!pending_refresh) {
-        const int retry_interval_ms = 30 * 60 * 1000;
-        app_timer_register(retry_interval_ms, timeout_timer_handler, NULL);
-        pending_refresh = true;        
+      // Ensure we're not pending an update, before rescheduling
+      const int retry_interval_ms = s_update_frequency_mins * 60 * 1000;
+      if (pending_refresh) {
+        // Reschedule existing timer
+        app_timer_reschedule(s_update_timer, retry_interval_ms);
+      }
+      else {
+        // Create timer
+        s_update_timer = app_timer_register(retry_interval_ms, timeout_timer_handler, NULL);
+        pending_refresh = true;
       }
     }
 
@@ -167,6 +176,11 @@ void forecast_io_weather_set_api_key(const char *api_key) {
       fetch();
     }
   }
+}
+
+void forecast_io_weather_set_update_frequency(uint32_t minutes) {
+  s_update_frequency_mins = minutes;
+  fetch();
 }
 
 void forecast_io_weather_set_location(const ForecastIOWeatherCoordinates coordinates){

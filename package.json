@@ -29,7 +29,8 @@
             "CfgActiveTime",
             "CfgApiKey",
             "CfgFlickBacklight",
-            "CfgRollTime"
+            "CfgRollTime",
+            "CfgWeatherFreq"
         ],
         "projectType": "native",
         "resources": {

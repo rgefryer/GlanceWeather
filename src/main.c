@@ -7,24 +7,23 @@
 Next up...
 
 - Glance
-  - looks like rate change might introduce a duff sample
   - Consider writing a zone-testing program
     - monitor for 30s, then buzz, then monitor the next 10s while displaying the last results.
 
 - Weather retrieval
   - Store GPS co-ords, and re-use if location unavailable
 
-- Weather displays
-  - Today
-  - Next 3 days
-
 - Main watch display
   - Age of forecast
   - Make it look nice!
   
+- Weather displays
+  - Today
+  - Next 3 days
+
 - Config
-  - API key
-  - Frequency of updates
+  - Store config on watch
+  - Get a grip on logic for startup, retry and failure recovery
 
 */
 
@@ -195,6 +194,7 @@ static void cfg_inbox_received_handler(DictionaryIterator *iter, void *context) 
   Tuple *light_time_t = dict_find(iter, MESSAGE_KEY_CfgLightTime);
   Tuple *roll_time_t = dict_find(iter, MESSAGE_KEY_CfgRollTime);
   Tuple *api_key_t = dict_find(iter, MESSAGE_KEY_CfgApiKey);
+  Tuple *weather_freq_t = dict_find(iter, MESSAGE_KEY_CfgWeatherFreq);
 
   if (backlight_t || flick_backlight_t) {
     if (backlight_t) backlight = backlight_t->value->int32 == 1;
@@ -208,7 +208,12 @@ static void cfg_inbox_received_handler(DictionaryIterator *iter, void *context) 
     if (roll_time_t) roll_time = roll_time_t->value->int32;
     glancing_service_update_timers(1000*light_time, 1000*active_time, roll_time);
   }
- 
+
+  if (weather_freq_t) {
+    forecast_io_weather_set_update_frequency(weather_freq_t->value->int32);
+  }
+  
+  
   if (api_key_t) {
     forecast_io_weather_set_api_key(api_key_t->value->cstring);
   }

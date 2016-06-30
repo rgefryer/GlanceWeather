@@ -69,7 +69,16 @@ module.exports = [
         "attributes": {
           "limit": 32
         }
-      }      
+      },
+      {
+        "type": "slider",
+        "messageKey": "CfgWeatherFreq",
+        "defaultValue": "30",
+        "label": "Time between updates (mins)",
+        "min": 5,
+        "max": 120,
+        "step": 15
+      }
     ]
   },
   {
